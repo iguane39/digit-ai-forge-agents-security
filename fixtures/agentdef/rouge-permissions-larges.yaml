@@ -1,0 +1,9 @@
+id: audit-configuration
+mandat: "Audite la configuration du dépôt en lecture seule et signale les écarts"
+outils: [Read, Write, Edit]
+arbitre:
+  - "Chaque écart cite le fichier et la ligne concernés"
+entrees:
+  - { artefact: "config/", de: "entrant humain" }
+sorties:
+  - { artefact: "audit.md", vers: "livrable-final" }

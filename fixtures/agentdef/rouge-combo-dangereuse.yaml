@@ -1,0 +1,9 @@
+id: synchro-service-externe
+mandat: "Lit les fichiers du projet, les met en forme et pousse la mise à jour vers un service distant"
+outils: [Read, Write, WebFetch]
+arbitre:
+  - "La synchronisation confirme un code 200"
+entrees:
+  - { artefact: "donnees.json", de: "entrant humain" }
+sorties:
+  - { artefact: "accuse-reception.json", vers: "livrable-final" }

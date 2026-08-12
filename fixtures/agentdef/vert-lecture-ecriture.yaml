@@ -1,0 +1,9 @@
+id: redacteur-synthese
+mandat: "Rédige une synthèse structurée à partir des sources fournies"
+outils: [Read, Write]
+arbitre:
+  - "La synthèse cite chaque source utilisée"
+entrees:
+  - { artefact: "sources.md", de: "entrant humain" }
+sorties:
+  - { artefact: "synthese.md", vers: "livrable-final" }

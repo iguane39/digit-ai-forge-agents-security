@@ -1,0 +1,9 @@
+id: revue-rapport
+mandat: "Audite le rapport financier en lecture seule et signale les incohérences chiffrées"
+outils: [Read]
+arbitre:
+  - "Chaque incohérence relevée cite la ligne source"
+entrees:
+  - { artefact: "rapport.pdf", de: "entrant humain" }
+sorties:
+  - { artefact: "revue.md", vers: "livrable-final" }

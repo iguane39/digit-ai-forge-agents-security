@@ -1,0 +1,12 @@
+{
+  "_commentaire": "Catalogue fermé des noms d'outils/permissions reconnus (v0, harnais Claude Code). Un outil déclaré par un agent.def hors de ce catalogue (et hors des préfixes reconnus) est signalé comme inconnu au référentiel — supply-chain / typosquat / capacité halluciné. À tenir à jour par le pilot au fil des harnais réels (README §Limites).",
+  "version": "0.1.0",
+  "outils_connus": [
+    "Read", "Write", "Edit", "NotebookEdit", "Bash", "PowerShell",
+    "Grep", "Glob", "Agent", "Artifact", "Skill", "ToolSearch",
+    "WebFetch", "WebSearch", "TodoWrite", "ExitPlanMode",
+    "Monitor", "SendMessage", "TaskStop", "EnterWorktree", "ExitWorktree",
+    "BashOutput", "KillShell"
+  ],
+  "prefixes_connus": ["mcp__"]
+}
