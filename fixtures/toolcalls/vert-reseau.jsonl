@@ -1,0 +1,1 @@
+{"ts":"2026-08-12T10:00:00Z","agent":"sync-agent","tool":"Bash","input":{"command":"curl -s https://api.interne.exemple.test/health"}}
