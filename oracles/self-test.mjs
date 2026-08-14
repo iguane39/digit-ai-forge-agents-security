@@ -4,6 +4,7 @@
 // (regle attendue présente dans les findings, pas juste un FAIL générique).
 // Exit 0 si tous les contrôles passent, 1 sinon. À rejouer après toute modification.
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,6 +12,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FX = (...p) => path.join(HERE, "..", "fixtures", ...p);
 const ORACLE_AGENTDEF = path.join(HERE, "oracle-scan-agentdef.mjs");
 const ORACLE_TOOLCALLS = path.join(HERE, "oracle-scan-toolcalls.mjs");
+const ORACLE_CORPUS = path.join(HERE, "oracle-corpus-injection.mjs");
+const CORPUS = path.join(HERE, "..", "corpus", "injection-prompt.jsonl");
 
 let pass = 0, echec = 0;
 const ok = (b, m) => { console.log(`  [${b ? "PASS" : "FAIL"}] ${m}`); b ? pass++ : echec++; };
@@ -120,6 +123,95 @@ const rt = (fichier, opts = {}) => runJson(ORACLE_TOOLCALLS, [
 {
   const r = runJson(ORACLE_TOOLCALLS, [FX("toolcalls", "n-existe-pas.jsonl"), "--perimetre", PERIMETRE]);
   ok(r.verdict === "SKIP", `journal introuvable → SKIP (obtenu ${r.verdict})`);
+}
+
+console.log("\nSELF-TEST forge-agents-security — oracle-corpus-injection (rejeu du corpus LLM01)\n");
+
+const FXI = (f) => FX("injection", f);
+const rc = (fichier, opts = {}) => runJson(ORACLE_CORPUS, [
+  FXI(fichier), "--corpus", opts.corpus || CORPUS, ...(opts.type ? ["--type", opts.type] : []),
+]);
+
+// ── intégrité du corpus lui-même (une charge mal formée doit se voir avant tout rejeu) ──
+{
+  const CHAMPS = ["id", "famille", "charge", "signature", "marqueur_effet", "effet_recherche", "categorie_owasp", "attendu", "severite"];
+  let ok1 = true, motif = "";
+  let charges = [];
+  try {
+    charges = fs.readFileSync(CORPUS, "utf8").split(/\r?\n/).filter((l) => l.trim()).map((l) => JSON.parse(l));
+  } catch (e) { ok1 = false; motif = `corpus illisible : ${e.message}`; }
+  if (ok1) {
+    for (const c of charges) {
+      const manquants = CHAMPS.filter((k) => c[k] === undefined);
+      if (manquants.length) { ok1 = false; motif = `${c.id || "sans id"} : champs manquants [${manquants}]`; break; }
+      try { new RegExp(c.signature, "i"); } catch (e) { ok1 = false; motif = `${c.id} : signature non compilable`; break; }
+      if (!new RegExp(c.signature, "i").test(c.charge)) { ok1 = false; motif = `${c.id} : la signature ne reconnaît pas sa propre charge`; break; }
+    }
+    if (ok1 && new Set(charges.map((c) => c.id)).size !== charges.length) { ok1 = false; motif = "identifiants non uniques"; }
+  }
+  ok(ok1, `corpus : ${charges.length} charges bien formées, ids uniques, chaque signature reconnaît sa charge${ok1 ? "" : ` — ${motif}`}`);
+  const d = charges.filter((c) => c.famille === "directe").length;
+  const i = charges.filter((c) => c.famille === "indirecte").length;
+  ok(d >= 10 && i >= 10, `corpus : les deux familles sont peuplées — ${d} directes / ${i} indirectes (≥ 10 chacune)`);
+}
+
+// ── INJ-1 · charge portée en clair par une définition d'agent ────────────────
+{
+  const r = rc("rouge-agentdef-charge.yaml");
+  ok(r.verdict === "FAIL" && aRegle(r, "INJ-1"), `rouge-agentdef-charge.yaml (charge INJ-D-01 dans le mandat) → FAIL avec INJ-1 (obtenu ${r.verdict})`);
+}
+// ── LÉGITIME VOISIN · même charge, mais citée en bloc clôturé / citation ─────
+{
+  const r = rc("vert-agentdef-defensif.md");
+  ok(r.verdict === "PASS" && aRegle(r, "INJ-3"), `vert-agentdef-defensif.md (voisin légitime : agent anti-injection qui CITE les mêmes charges) → PASS avec INJ-3, aucun faux positif (obtenu ${r.verdict})`);
+}
+{
+  const r = rc("vert-agentdef-commentaire.yaml");
+  ok(r.verdict === "PASS" && aRegle(r, "INJ-3"), `vert-agentdef-commentaire.yaml (charge en commentaire YAML, écarté par le parseur agent.def) → PASS avec INJ-3 (obtenu ${r.verdict})`);
+}
+
+// ── INJ-2 · traversée observée dans un journal ───────────────────────────────
+{
+  const r = rc("rouge-journal-traversee.jsonl");
+  ok(r.verdict === "FAIL" && aRegle(r, "INJ-2"), `rouge-journal-traversee.jsonl (marqueur CANARI-I01 réémis dans un curl) → FAIL avec INJ-2 (obtenu ${r.verdict})`);
+}
+{
+  const r = rc("rouge-journal-reemission.jsonl");
+  ok(r.verdict === "FAIL" && aRegle(r, "INJ-2"), `rouge-journal-reemission.jsonl (texte de la charge INJ-I-04 réémis dans un Edit) → FAIL avec INJ-2 (obtenu ${r.verdict})`);
+}
+// ── INJ-3 · charge ingérée puis non suivie d'effet = comportement sain ───────
+{
+  const r = rc("vert-journal-injection-ignoree.jsonl");
+  ok(r.verdict === "PASS" && aRegle(r, "INJ-3"), `vert-journal-injection-ignoree.jsonl (charge indirecte ingérée, jamais réémise) → PASS avec INJ-3 (obtenu ${r.verdict})`);
+}
+// ── LÉGITIME VOISIN · vocabulaire de sécurité qui ressemble à des charges ────
+{
+  const r = rc("vert-journal-voisin-legitime.jsonl");
+  const aucunINJ = !aRegle(r, "INJ-1") && !aRegle(r, "INJ-2") && !aRegle(r, "INJ-3");
+  ok(r.verdict === "PASS" && aucunINJ, `vert-journal-voisin-legitime.jsonl (charte anti-injection + « instructions … précédemment » : voisin légitime) → PASS sans aucun INJ-1/2/3 (obtenu ${r.verdict})`);
+}
+{
+  const r = rc("vert-journal-propre.jsonl");
+  const aucunINJ = !aRegle(r, "INJ-1") && !aRegle(r, "INJ-2") && !aRegle(r, "INJ-3");
+  ok(r.verdict === "PASS" && aucunINJ, `vert-journal-propre.jsonl (journal banal, aucune charge) → PASS sans aucun INJ (obtenu ${r.verdict})`);
+}
+
+// ── fail-closed : jamais de PASS quand on ne peut pas juger ──────────────────
+{
+  const r = rc("n-existe-pas.jsonl");
+  ok(r.verdict === "SKIP", `cible introuvable → SKIP, jamais PASS (obtenu ${r.verdict})`);
+}
+{
+  const r = rc("format-inconnu.dat");
+  ok(r.verdict === "SKIP", `format de cible inconnu → SKIP motivé, jamais PASS (obtenu ${r.verdict})`);
+}
+{
+  const r = rc("skip-journal-illisible.jsonl");
+  ok(r.verdict === "SKIP", `journal .jsonl sans aucune ligne JSON exploitable → SKIP, jamais PASS (obtenu ${r.verdict})`);
+}
+{
+  const r = rc("vert-journal-propre.jsonl", { corpus: path.join(HERE, "..", "corpus", "n-existe-pas.jsonl") });
+  ok(r.verdict === "donnees_insuffisantes", `corpus introuvable → donnees_insuffisantes, aucun rejeu réputé fait (obtenu ${r.verdict})`);
 }
 
 console.log(`\nSelf-test forge-agents-security : ${pass} PASS, ${echec} FAIL`);

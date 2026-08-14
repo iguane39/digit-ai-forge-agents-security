@@ -1,0 +1,2 @@
+ts=2026-08-14T12:00:00Z tool=Bash command="echo bonjour"
+ts=2026-08-14T12:00:04Z tool=Read file_path="README.md"

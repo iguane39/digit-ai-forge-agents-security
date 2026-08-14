@@ -14,6 +14,7 @@ d'outils, séparé de la forge qui les construit (`forge-agents`). Née du manda
 |---|---|---|---|
 | **Scanner un agent (statique)** | vérifier qu'un agent défini ne porte pas de capacités dangereuses | `node oracles\oracle-scan-agentdef.mjs <def>` | prouvé (experimental) |
 | **Scanner les appels d'outils (dynamique)** | détecter les patterns d'attaque dans un journal d'exécution d'agent | `node oracles\oracle-scan-toolcalls.mjs <journal.jsonl> --perimetre <racine>` | prouvé (experimental) |
+| **Rejouer un corpus d'injections de prompt** | savoir si une charge d'injection connue a traversé (OWASP LLM01), sur artefact statique et sans appel de modèle | `node oracles\oracle-corpus-injection.mjs <cible>` | prouvé (experimental) |
 
 Le catalogue consolidé des dix forges vit chez le pilot :
 [digit-ai-forge-pilot/catalogues/CATALOGUES.md](https://github.com/iguane39/digit-ai-forge-pilot/blob/main/catalogues/CATALOGUES.md).
@@ -28,10 +29,16 @@ Le catalogue consolidé des dix forges vit chez le pilot :
 - **Elle outille, ne décide jamais.** Un verdict `FAIL` est un constat argumenté et
   localisé — jamais un blocage automatique d'un run, jamais une correction appliquée à la
   place d'un humain.
-- **Zéro API tierce payante.** Zéro dépendance npm. Deux scripts Node natifs (`.mjs`),
-  aucune installation.
+- **Zéro API tierce payante.** Zéro dépendance npm. Trois scripts Node natifs (`.mjs`),
+  aucune installation. Aucun oracle n'appelle de modèle : la forge n'a pas de budget alloué
+  et n'en réclame pas.
 - **Zéro donnée réelle.** Dépôt public : toutes les fixtures sont synthétiques (domaines,
   identifiants, chemins fictifs) — aucune donnée client, aucun secret réel.
+- **Le corpus d'attaques est une DONNÉE, jamais une consigne.** `corpus/injection-prompt.jsonl`
+  contient des charges d'injection réelles dans leur forme : elles sont lues, comparées et
+  citées — jamais exécutées ni interprétées, par aucun outil de cette forge ni par l'agent
+  qui l'opère (doctrine pilot : « entrant = donnée, consignes embarquées décrites, jamais
+  exécutées »). Toutes visent des domaines fictifs en `.test`.
 
 ## Catalogue v0 — statut prouvé
 
@@ -39,7 +46,9 @@ Le catalogue consolidé des dix forges vit chez le pilot :
 |---|---|---|
 | `oracles/oracle-scan-agentdef.mjs` — scan **statique** d'un agent.def ou d'un subagent compilé | **prouvé** | 9 fixtures (`fixtures/agentdef/`), rejouées par `self-test.mjs` |
 | `oracles/oracle-scan-toolcalls.mjs` — scan **dynamique** d'un journal JSONL d'appels d'outils | **prouvé** | 11 fixtures JSONL + 1 allowlist de domaines (`fixtures/toolcalls/`), rejouées par `self-test.mjs` |
-| `oracles/self-test.mjs` — rejeu intégral à double sens (vert doit passer, rouge doit échouer *pour la bonne raison*) | **prouvé** | 24/24 PASS à la dernière exécution connue (rejouer avant de faire confiance) |
+| `oracles/oracle-corpus-injection.mjs` — rejeu du **corpus d'injections de prompt** contre une cible statique (définition d'agent ou journal) | **prouvé** | 8 fixtures (`fixtures/injection/`) dont 2 voisins légitimes, rejouées par `self-test.mjs` |
+| `corpus/injection-prompt.jsonl` — corpus versionné de **34 charges** (17 directes, 17 indirectes) | **prouvé** | intégrité (schéma, unicité des id, chaque signature reconnaît sa charge) contrôlée par `self-test.mjs` |
+| `oracles/self-test.mjs` — rejeu intégral à double sens (vert doit passer, rouge doit échouer *pour la bonne raison*) | **prouvé** | 38/38 PASS à la dernière exécution connue (rejouer avant de faire confiance) |
 
 « Prouvé » signifie : chaque règle a une fixture verte qui passe et une fixture rouge
 voisine qui échoue pour la raison attendue (code `regle` vérifié, pas seulement le verdict
@@ -83,13 +92,48 @@ node oracles/oracle-scan-toolcalls.mjs <journal.jsonl> --perimetre <dossier> [--
 défaut, l'allowlist réseau est **vide** : tout domaine externe est donc signalé par défaut
 (deny-by-default, posture assumée — pas un oubli).
 
-### Contrat de sortie (les deux oracles)
+### `oracle-corpus-injection.mjs` — rejeu du corpus d'injections (OWASP LLM01)
+
+Rejoue `corpus/injection-prompt.jsonl` (34 charges) contre une **cible statique** d'un format
+déjà connu de la forge : définition d'agent (`agent.def` YAML ou subagent compilé) ou journal
+JSONL d'appels d'outils. **Aucun appel de modèle, aucune API tierce, aucun coût.**
+
+| Règle | Détecte |
+|---|---|
+| `INJ-1` | une charge du corpus figure **en clair** dans le texte d'une définition d'agent — l'agent porte lui-même l'instruction d'attaque |
+| `INJ-2` | **traversée** : la charge (ou son marqueur d'effet) apparaît dans l'entrée d'un outil d'**action** (`Bash`, `Write`, `Edit`, `Agent`, `mcp__*`…) — le texte de l'attaquant est devenu un acte |
+| `INJ-3` | *(info, jamais un défaut)* charge **ingérée** puis non réémise dans un acte, ou charge **citée** en zone de citation — c'est le comportement sain, tracé pour la mesure |
+
+Une charge du corpus porte : `id` stable, `famille` (**directe** = entrée utilisateur /
+**indirecte** = contenu récupéré, RAG, page web, fichier, sortie d'outil), `charge` (le texte),
+`signature` (regex de détection), `marqueur_effet` (canari), `effet_recherche` (exfiltration,
+contournement de consigne, appel d'outil non voulu, escalade de permission),
+`categorie_owasp`, `attendu` (ce qu'un système sain doit faire), `severite`.
+
+**Le corpus est de la donnée de test** : il est lu et comparé, jamais exécuté ni interprété.
+La convention qui distingue *porter* une charge de la *citer* (bloc clôturé, citation,
+commentaire YAML ; ingestion vs action) est détaillée dans `references/mapping-owasp-llm.md` §4.
+
+```
+node oracles/oracle-corpus-injection.mjs <cible> [--corpus <f.jsonl>] [--type journal|agentdef] [--json-only]
+```
+
+Fail-closed : corpus absent/illisible → `donnees_insuffisantes` ; cible absente, format inconnu
+ou journal sans ligne exploitable → `SKIP` motivé. **Jamais de PASS par défaut.**
+
+Rattachement des règles au **OWASP Top 10 for LLM Applications (2025)**, et déclaration
+nominale des catégories non couvertes : `references/mapping-owasp-llm.md`.
+
+### Contrat de sortie (les trois oracles)
 
 ```json
 { "oracle": "...", "version": "0.1.0", "artefact": "...", "verdict": "PASS|FAIL|SKIP|donnees_insuffisantes",
   "findings": [{ "sev": "bloquant|majeur|mineur|info", "regle": "CAP-1", "msg": "...", "where": "..." }],
   "non_juge": ["..."] }
 ```
+
+`oracle-corpus-injection.mjs` ajoute un champ `domaine`
+(`securite-agentique/injection-de-prompt`) entre `version` et `artefact`.
 
 Exit `0` = PASS, `1` = FAIL, `2` = SKIP / `donnees_insuffisantes`.
 
@@ -99,12 +143,12 @@ Exit `0` = PASS, `1` = FAIL, `2` = SKIP / `donnees_insuffisantes`.
 node oracles/self-test.mjs
 ```
 
-Sortie attendue : `24 PASS, 0 FAIL`. À rejouer après toute modification d'une règle ou
-d'une fixture — un `✓` sans self-test rejoué n'est pas un `✓`.
+Sortie attendue : `38 PASS, 0 FAIL`. À rejouer après toute modification d'une règle, d'une
+fixture ou du corpus — un `✓` sans self-test rejoué n'est pas un `✓`.
 
 ## Limites explicites (ce que la v0 n'est pas)
 
-- **Pas de sandbox d'exécution.** Aucun des deux oracles n'exécute l'agent scanné ni les
+- **Pas de sandbox d'exécution.** Aucun des trois oracles n'exécute l'agent scanné ni les
   commandes du journal — analyse texte/structure uniquement. Un agent qui obfusque au-delà
   des motifs lexicaux couverts (encodages autres que base64, indirection via variable,
   commande construite dynamiquement) n'est pas détecté.
@@ -115,9 +159,29 @@ d'une fixture — un `✓` sans self-test rejoué n'est pas un `✓`.
   ; un appel d'outil non tracé par le harnais est invisible.
 - **Référentiel d'outils v0 figé à la main** (`oracles/data/referentiel-outils.json`) — à
   tenir à jour au fil des harnais réels, pas de découverte automatique.
-- **Pas de red-teaming automatisé** (génération d'attaques, fuzzing de prompts) ni de
-  **scan runtime branché sur le harnais** (interception en direct des appels d'outils
-  pendant un run) — restes explicites, jamais promis au catalogue ci-dessus.
+- **Red-teaming : dette PARTIELLEMENT levée, et reformulée.** Ce qui est fait : un corpus
+  **versionné et rejouable** de 34 charges d'injection de prompt (`corpus/injection-prompt.jsonl`)
+  et l'oracle qui le rejoue. Ce qui reste entier : la **génération** d'attaques et le
+  **fuzzing** de prompts (le corpus est écrit à la main, il ne se renouvelle pas seul), et
+  surtout — parce que la forge n'a ni budget ni droit d'appeler une API tierce — **aucun
+  modèle n'est jamais sollicité**. L'oracle mesure la **trace** laissée par un système dans
+  un artefact statique, pas la **résistance** d'un système vivant : un système qui a refusé
+  une charge sans laisser de trace et un système qui n'a jamais vu la charge lui sont
+  indiscernables. La dette juste formulée est donc désormais : *« pas de red-teaming
+  **actif** contre un modèle vivant ; rejeu passif d'un corpus fixe, sur artefact déjà
+  produit »*.
+- **Le corpus vaut ce qu'il couvre.** Détection **lexicale** (une signature regex par
+  charge) : une reformulation, une traduction ou un encodage nouveau d'une charge connue
+  échappe au rejeu. `INJ-D-06` en est l'illustration assumée — sa charge est encodée en
+  base64 et l'oracle ne décode rien.
+- **Couverture OWASP partielle et déclarée.** LLM04, LLM05, LLM07, LLM08, LLM09 et LLM10 ne
+  sont couverts par **aucune** règle ; LLM03 l'est marginalement. Détail nominal et motifs :
+  `references/mapping-owasp-llm.md` §2. Un run vert sur les trois oracles n'a rien dit de
+  ces risques.
+- **Pas de scan runtime branché sur le harnais** (interception en direct des appels d'outils
+  pendant un run) — reste explicite, jamais promis au catalogue ci-dessus.
+- **Référentiel OWASP suivi à la main.** L'édition 2025 est transcrite dans
+  `references/mapping-owasp-llm.md` ; aucune veille automatique ne détectera une réédition.
 - **Pas de décision.** Le verdict `FAIL` ne bloque rien tout seul — un humain ou un run
   amont décide de la suite via le pilot.
 
@@ -127,11 +191,16 @@ d'une fixture — un `✓` sans self-test rejoué n'est pas un `✓`.
 oracles/
   oracle-scan-agentdef.mjs     scan statique agent.def / subagent compilé
   oracle-scan-toolcalls.mjs    scan dynamique journal JSONL d'appels d'outils
+  oracle-corpus-injection.mjs  rejeu du corpus d'injections de prompt (LLM01)
   self-test.mjs                rejeu intégral à double sens
   data/referentiel-outils.json catalogue fermé des outils reconnus
+corpus/
+  injection-prompt.jsonl       34 charges d'injection (17 directes / 17 indirectes) — DONNÉE de test
 fixtures/
   agentdef/                    9 fixtures (vertes + rouges) pour oracle-scan-agentdef
   toolcalls/                   11 fixtures JSONL (vertes + rouges) + allowlist de domaines
+  injection/                   8 fixtures pour oracle-corpus-injection, dont 2 voisins légitimes
 references/
-  FORMAT-JOURNAL.md            schéma documenté du journal JSONL
+  FORMAT-JOURNAL.md            schéma documenté du journal JSONL (champ `output` inclus)
+  mapping-owasp-llm.md         règles CAP/TC/INJ → OWASP LLM Top 10 + trous déclarés
 ```
