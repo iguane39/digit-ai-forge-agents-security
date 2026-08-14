@@ -45,10 +45,10 @@ Le catalogue consolidé des dix forges vit chez le pilot :
 | Service | Statut | Preuve |
 |---|---|---|
 | `oracles/oracle-scan-agentdef.mjs` — scan **statique** d'un agent.def ou d'un subagent compilé | **prouvé** | 9 fixtures (`fixtures/agentdef/`), rejouées par `self-test.mjs` |
-| `oracles/oracle-scan-toolcalls.mjs` — scan **dynamique** d'un journal JSONL d'appels d'outils | **prouvé** | 11 fixtures JSONL + 1 allowlist de domaines (`fixtures/toolcalls/`), rejouées par `self-test.mjs` |
+| `oracles/oracle-scan-toolcalls.mjs` — scan **dynamique** d'un journal JSONL d'appels d'outils | **prouvé** | 18 fixtures JSONL dont 2 voisins légitimes (lot borné, boucle qui progresse) + 1 allowlist de domaines + 2 jeux de seuils (`fixtures/toolcalls/`), rejouées par `self-test.mjs` |
 | `oracles/oracle-corpus-injection.mjs` — rejeu du **corpus d'injections de prompt** contre une cible statique (définition d'agent ou journal) | **prouvé** | 8 fixtures (`fixtures/injection/`) dont 2 voisins légitimes, rejouées par `self-test.mjs` |
 | `corpus/injection-prompt.jsonl` — corpus versionné de **34 charges** (17 directes, 17 indirectes) | **prouvé** | intégrité (schéma, unicité des id, chaque signature reconnaît sa charge) contrôlée par `self-test.mjs` |
-| `oracles/self-test.mjs` — rejeu intégral à double sens (vert doit passer, rouge doit échouer *pour la bonne raison*) | **prouvé** | 38/38 PASS à la dernière exécution connue (rejouer avant de faire confiance) |
+| `oracles/self-test.mjs` — rejeu intégral à double sens (vert doit passer, rouge doit échouer *pour la bonne raison*) | **prouvé** | 48/48 PASS à la dernière exécution connue (rejouer avant de faire confiance) |
 
 « Prouvé » signifie : chaque règle a une fixture verte qui passe et une fixture rouge
 voisine qui échoue pour la raison attendue (code `regle` vérifié, pas seulement le verdict
@@ -71,7 +71,7 @@ automatique par la présence d'un frontmatter `---`.
 node oracles/oracle-scan-agentdef.mjs <fichier.yaml|fichier.md> [--json-only]
 ```
 
-### `oracle-scan-toolcalls.mjs` — 5 familles de motifs d'attaque
+### `oracle-scan-toolcalls.mjs` — 8 familles de motifs
 
 | Règle | Détecte |
 |---|---|
@@ -80,17 +80,33 @@ node oracles/oracle-scan-agentdef.mjs <fichier.yaml|fichier.md> [--json-only]
 | `TC-3` | Lecture de secrets : `.env`, clés privées, `credentials`, `.ssh/`, `.aws/credentials` |
 | `TC-4` | Payload encodé : chaîne base64 anormalement longue (≥ 120 caractères), indice d'obfuscation |
 | `TC-5` | Écriture hors périmètre déclaré : `Write`/`Edit`/`NotebookEdit` ciblant un chemin hors périmètre |
+| `TC-6` | **Consommation non bornée** (LLM10) : rafale d'appels consécutifs au même outil sans borne déclarée **et tenue** — ou borne annoncée (`lot_total`) dépassée, incohérente, non respectée |
+| `TC-7` | **Entrée démesurée** (LLM10) : taille d'entrée d'un appel unique au-delà du seuil (`taille_entree_octets` déclaré, à défaut taille sérialisée de `input`) |
+| `TC-8` | **Boucle d'outil non convergente** (LLM10) : appels répétés d'entrée **strictement identique** — aucune progression entre les itérations |
 
-Format du journal : voir `references/FORMAT-JOURNAL.md`.
+`TC-6..8` mesurent l'**absence de borne**, jamais le volume seul : un traitement par lot
+volumineux mais borné (`lot` / `lot_index` / `lot_total`) est légitime et n'est pas signalé —
+et la borne annoncée est **vérifiée**, pas crue sur parole. Aucun appel de modèle, donc aucun
+budget : ni jetons, ni coût, ni durée ne sont jugés (cf. `references/mapping-owasp-llm.md`
+§2 bis).
+
+Format du journal et champs de volumétrie : voir `references/FORMAT-JOURNAL.md`.
 
 ```
-node oracles/oracle-scan-toolcalls.mjs <journal.jsonl> --perimetre <dossier> [--domaines <fichier.json>] [--json-only]
+node oracles/oracle-scan-toolcalls.mjs <journal.jsonl> --perimetre <dossier> [--domaines <fichier.json>] [--seuils <fichier.json>] [--json-only]
 ```
 
 `--perimetre` est **obligatoire** — aucune frontière de sécurité n'est devinée par défaut
 (même doctrine que `forge-ops --seuils` pour le rollback). `--domaines` est optionnel ; à
 défaut, l'allowlist réseau est **vide** : tout domaine externe est donc signalé par défaut
-(deny-by-default, posture assumée — pas un oubli).
+(deny-by-default, posture assumée — pas un oubli). `--seuils` est optionnel *et* a des valeurs
+par défaut explicites (`rafale_max` 20, `entree_max_octets` 1 Mio, `repetition_max` 5) : un
+seuil de volumétrie est une **convention documentée**, pas une frontière de sécurité — d'où la
+différence de traitement avec `--perimetre`. Un seuil mal formé rend `donnees_insuffisantes`,
+jamais un `PASS` dégradé.
+
+Les champs de volumétrie sont **tous optionnels** : un journal au format v0 reste valide et
+jugeable sur `TC-1..5` à l'identique.
 
 ### `oracle-corpus-injection.mjs` — rejeu du corpus d'injections (OWASP LLM01)
 
@@ -143,7 +159,7 @@ Exit `0` = PASS, `1` = FAIL, `2` = SKIP / `donnees_insuffisantes`.
 node oracles/self-test.mjs
 ```
 
-Sortie attendue : `38 PASS, 0 FAIL`. À rejouer après toute modification d'une règle, d'une
+Sortie attendue : `48 PASS, 0 FAIL`. À rejouer après toute modification d'une règle, d'une
 fixture ou du corpus — un `✓` sans self-test rejoué n'est pas un `✓`.
 
 ## Limites explicites (ce que la v0 n'est pas)
@@ -174,8 +190,10 @@ fixture ou du corpus — un `✓` sans self-test rejoué n'est pas un `✓`.
   charge) : une reformulation, une traduction ou un encodage nouveau d'une charge connue
   échappe au rejeu. `INJ-D-06` en est l'illustration assumée — sa charge est encodée en
   base64 et l'oracle ne décode rien.
-- **Couverture OWASP partielle et déclarée.** LLM04, LLM05, LLM07, LLM08, LLM09 et LLM10 ne
-  sont couverts par **aucune** règle ; LLM03 l'est marginalement. Détail nominal et motifs :
+- **Couverture OWASP partielle et déclarée.** LLM04, LLM05, LLM07, LLM08 et LLM09 ne
+  sont couverts par **aucune** règle ; LLM03 l'est marginalement ; **LLM10 est couverte
+  partiellement** depuis TF-0207 (`TC-6..8`) — versant appels d'outils seulement, ni jetons
+  ni coût ni durée. Détail nominal et motifs :
   `references/mapping-owasp-llm.md` §2. Un run vert sur les trois oracles n'a rien dit de
   ces risques.
 - **Pas de scan runtime branché sur le harnais** (interception en direct des appels d'outils

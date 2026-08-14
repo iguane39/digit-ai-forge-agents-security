@@ -25,12 +25,14 @@ Forge de **sécurité agentique** — le juge, séparé du jugé (`forge-agents`
 ## Point d'entrée
 
 ```
-node oracles/self-test.mjs                      # preuve intégrale (38 PASS attendus)
+node oracles/self-test.mjs                      # preuve intégrale (48 PASS attendus)
 node oracles/oracle-scan-agentdef.mjs <fichier>  # scan statique d'un agent
 node oracles/oracle-scan-toolcalls.mjs <journal.jsonl> --perimetre <dossier>  # scan dynamique
 node oracles/oracle-corpus-injection.mjs <cible> # rejeu du corpus d'injections (OWASP LLM01)
 ```
 
 Couverture OWASP LLM Top 10 et **trous déclarés nommément** :
-`references/mapping-owasp-llm.md`. LLM04, LLM05, LLM07, LLM08, LLM09, LLM10 ne sont couverts
-par aucune règle — ne jamais laisser croire l'inverse.
+`references/mapping-owasp-llm.md`. LLM04, LLM05, LLM07, LLM08, LLM09 ne sont couverts par
+aucune règle — ne jamais laisser croire l'inverse. **LLM10** est couverte *partiellement*
+depuis TF-0207 (`TC-6..8`) : rafale non bornée, entrée démesurée, boucle d'outil non
+convergente — mais **ni jetons, ni coût, ni durée** (cf. mapping §2 bis).
