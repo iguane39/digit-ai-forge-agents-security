@@ -1,7 +1,7 @@
 # digit-ai-forge-agents-security
 
 Forge de **sécurité agentique** — le juge, séparé du jugé (`forge-agents`). Détail complet :
-`README.md`. Mandat d'origine : TF-0111 (`digit-ai-forge-pilot/todo/TODO.jsonl`).
+`README.md`. Mandat d'origine : TF-0111 (`digit-ai-factory/todo/TODO.jsonl`).
 
 ## Garde-fous
 

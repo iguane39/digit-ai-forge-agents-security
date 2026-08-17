@@ -2,7 +2,7 @@
 
 Forge dédiée à la **sécurité agentique** — le contrôle des agents et de leurs invocations
 d'outils, séparé de la forge qui les construit (`forge-agents`). Née du mandat TF-0111
-(décision humaine du 12/08/2026, registre `digit-ai-forge-pilot/todo/TODO.jsonl`).
+(décision humaine du 12/08/2026, registre `digit-ai-factory/todo/TODO.jsonl`).
 
 ## Catalogue de services
 
@@ -17,14 +17,14 @@ d'outils, séparé de la forge qui les construit (`forge-agents`). Née du manda
 | **Rejouer un corpus d'injections de prompt** | savoir si une charge d'injection connue a traversé (OWASP LLM01), sur artefact statique et sans appel de modèle | `node oracles\oracle-corpus-injection.mjs <cible>` | prouvé (experimental) |
 
 Le catalogue consolidé des dix forges vit chez le pilot :
-[digit-ai-forge-pilot/catalogues/CATALOGUES.md](https://github.com/iguane39/digit-ai-forge-pilot/blob/main/catalogues/CATALOGUES.md).
+[digit-ai-factory/catalogues/CATALOGUES.md](https://github.com/iguane39/digit-ai-factory/blob/main/catalogues/CATALOGUES.md).
 
 ## Doctrine
 
 - **Le juge ne vit pas chez le jugé.** `forge-agents` construit des agents et outille leur
   cohérence structurelle (gates anti-serial-collapse, oracles de livrables). Elle ne peut
   pas être son propre contrôle de sécurité — d'où une forge séparée.
-- **Invocation sur mandat humain**, via le pilot (`digit-ai-forge-pilot`). Cette forge
+- **Invocation sur mandat humain**, via le pilot (`digit-ai-factory`). Cette forge
   n'audite jamais spontanément un dépôt tiers.
 - **Elle outille, ne décide jamais.** Un verdict `FAIL` est un constat argumenté et
   localisé — jamais un blocage automatique d'un run, jamais une correction appliquée à la
