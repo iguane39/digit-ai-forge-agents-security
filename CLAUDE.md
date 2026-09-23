@@ -25,7 +25,8 @@ Forge de **sécurité agentique** — le juge, séparé du jugé (`forge-agents`
 ## Point d'entrée
 
 ```
-node oracles/self-test.mjs                      # preuve intégrale (48 PASS attendus)
+node oracles/self-test.mjs                      # preuve intégrale (54 PASS attendus)
+node oracles/decouvrir-oracles.mjs               # liste des oracles LUE SUR LE DISQUE (TF-1319, contrat du pilot)
 node oracles/oracle-scan-agentdef.mjs <fichier>  # scan statique d'un agent
 node oracles/oracle-scan-toolcalls.mjs <journal.jsonl> --perimetre <dossier>  # scan dynamique
 node oracles/oracle-corpus-injection.mjs <cible> # rejeu du corpus d'injections (OWASP LLM01)

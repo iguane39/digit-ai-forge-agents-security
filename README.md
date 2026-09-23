@@ -29,8 +29,9 @@ Le catalogue consolidé des dix forges vit chez le pilot :
 - **Elle outille, ne décide jamais.** Un verdict `FAIL` est un constat argumenté et
   localisé — jamais un blocage automatique d'un run, jamais une correction appliquée à la
   place d'un humain.
-- **Zéro API tierce payante.** Zéro dépendance npm. Trois scripts Node natifs (`.mjs`),
-  aucune installation. Aucun oracle n'appelle de modèle : la forge n'a pas de budget alloué
+- **Zéro API tierce payante.** Zéro dépendance npm. Trois oracles Node natifs (`.mjs`), plus
+  `oracles/decouvrir-oracles.mjs` qui les liste depuis le disque pour le juge d'enclenchement du
+  pilot (TF-1319), aucune installation. Aucun oracle n'appelle de modèle : la forge n'a pas de budget alloué
   et n'en réclame pas.
 - **Zéro donnée réelle.** Dépôt public : toutes les fixtures sont synthétiques (domaines,
   identifiants, chemins fictifs) — aucune donnée client, aucun secret réel.
