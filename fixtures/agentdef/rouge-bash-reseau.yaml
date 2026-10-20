@@ -1,0 +1,9 @@
+id: agent-bash-reseau
+mandat: "Exécute les commandes nécessaires pour préparer l'environnement du projet et récupérer la documentation en ligne"
+outils: [Bash, WebFetch]
+arbitre:
+  - "L'environnement est prêt (dépendances installées)"
+entrees:
+  - { artefact: "manifeste.json", de: "entrant humain" }
+sorties:
+  - { artefact: "environnement-pret.txt", vers: "livrable-final" }

@@ -23,9 +23,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 const ORACLE = "oracle-scan-agentdef";
 const NON_JUGE = [
+  "capacité réseau IMPLICITE d'un shell (Bash, PowerShell) sans outil réseau déclaré : notée « mineur », jamais bloquante depuis la 0.2.0 (D-49 (a) du 20/10/2026)",
   "exécution réelle de l'agent (v0 statique — ni sandbox ni interprétation du prompt par un modèle)",
   "analyse sémantique profonde du mandat au-delà de motifs lexicaux (heuristique, pas de compréhension)",
   "conformité du format à un substrat non Claude Code (façade queue git, etc.)",
@@ -144,17 +145,28 @@ if (!def.id && !def.outils.length && !def.mandat) {
 }
 
 // ── CAP-1 · combinaison de capacités dangereuse (réseau + écriture + lecture secrets) ──
-const CAT_RESEAU = ["WebFetch", "WebSearch", "Bash", "PowerShell"];
-const CAT_ECRITURE = ["Write", "Edit", "NotebookEdit", "Bash", "PowerShell"];
-const CAT_LECTURE = ["Read", "Grep", "Bash", "PowerShell"];
+// 0.2.0 (D-49 (a) du 20/10/2026, TF-1935) — LE SHELL SEUL N'EST PLUS UNE COMBINAISON DANGEREUSE.
+// En 0.1.0, Bash ou PowerShell comptait à la fois comme réseau, écriture et lecture : la porte
+// rendait FAIL sur les 5 agents de la flotte du pilot sur 5, et sur 55 des 71 agents d'Everything
+// Claude Code — elle ne distinguait plus un agent ordinaire d'un agent dangereux. Le réseau ne
+// compte désormais que par un outil réseau DÉCLARÉ (WebFetch, WebSearch) : cumulé avec une
+// écriture et une lecture (le shell peut les fournir), il reste bloquant. Un shell sans outil
+// réseau déclaré laisse une note « mineur », non bloquante : sa capacité réseau implicite est
+// dite, pas jugée (non_juge).
+const CAT_RESEAU = ["WebFetch", "WebSearch"];
+const SHELLS = ["Bash", "PowerShell"];
+const CAT_ECRITURE = ["Write", "Edit", "NotebookEdit", ...SHELLS];
+const CAT_LECTURE = ["Read", "Grep", ...SHELLS];
 const outilsAgent = def.outils;
 const match = (cat) => outilsAgent.filter((o) => cat.includes(o));
-const mReseau = match(CAT_RESEAU), mEcriture = match(CAT_ECRITURE), mLecture = match(CAT_LECTURE);
+const mReseau = match(CAT_RESEAU), mEcriture = match(CAT_ECRITURE), mLecture = match(CAT_LECTURE), mShell = match(SHELLS);
 if (mReseau.length && mEcriture.length && mLecture.length) {
-  const distincts = new Set([...mReseau, ...mEcriture, ...mLecture]).size;
-  const sev = distincts >= 3 ? "bloquant" : "majeur"; // 3 outils distincts = surface complète ; recouvrement (ex. Bash seul) = risque réel mais moindre confiance
-  add(sev, "CAP-1",
-    `combinaison de capacités dangereuse — réseau [${mReseau.join(",")}] + écriture [${mEcriture.join(",")}] + lecture [${mLecture.join(",")}] cumulées : surface d'exfiltration complète (lire un secret, l'exfiltrer, couvrir ses traces)`,
+  add("bloquant", "CAP-1",
+    `combinaison de capacités dangereuse — réseau déclaré [${mReseau.join(",")}] + écriture [${mEcriture.join(",")}] + lecture [${mLecture.join(",")}] cumulées : surface d'exfiltration complète (lire un secret, l'exfiltrer, couvrir ses traces)`,
+    "outils");
+} else if (mShell.length) {
+  add("mineur", "CAP-1",
+    `shell [${mShell.join(",")}] sans outil réseau déclaré : sa capacité réseau implicite n'est pas jugée comme une combinaison dangereuse (D-49 (a) du 20/10/2026) — note, non bloquante`,
     "outils");
 }
 

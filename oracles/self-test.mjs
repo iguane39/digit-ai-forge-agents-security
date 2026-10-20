@@ -41,8 +41,13 @@ console.log("SELF-TEST forge-agents-security — oracle-scan-agentdef (statique)
   ok(r.verdict === "FAIL" && aRegle(r, "CAP-1"), `rouge-combo-dangereuse.yaml (Read+Write+WebFetch) → FAIL avec CAP-1 (obtenu ${r.verdict})`);
 }
 {
-  const r = runJson(ORACLE_AGENTDEF, [FX("agentdef", "rouge-bash-seul.yaml")]);
-  ok(r.verdict === "FAIL" && aRegle(r, "CAP-1"), `rouge-bash-seul.yaml (Bash seul cumule les 3 capacités) → FAIL avec CAP-1 (obtenu ${r.verdict})`);
+  // D-49 (a) du 20/10/2026 : requalifiée — Bash seul passe, avec une note CAP-1 « mineur ».
+  const r = runJson(ORACLE_AGENTDEF, [FX("agentdef", "vert-bash-seul.yaml")]);
+  ok(r.verdict === "PASS" && aRegle(r, "CAP-1"), `vert-bash-seul.yaml (Bash seul, aucun outil réseau déclaré) → PASS avec une note CAP-1 (obtenu ${r.verdict})`);
+}
+{
+  const r = runJson(ORACLE_AGENTDEF, [FX("agentdef", "rouge-bash-reseau.yaml")]);
+  ok(r.verdict === "FAIL" && aRegle(r, "CAP-1"), `rouge-bash-reseau.yaml (Bash + WebFetch) → FAIL avec CAP-1 (obtenu ${r.verdict})`);
 }
 
 // ── CAP-2 · outil hors référentiel ───────────────────────────────────────────

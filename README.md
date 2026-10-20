@@ -59,7 +59,7 @@ global). Un service sans cette preuve n'apparaîtrait pas ici.
 
 | Règle | Détecte |
 |---|---|
-| `CAP-1` | Combinaison de capacités dangereuse : réseau + écriture filesystem + lecture cumulées par le même agent (surface d'exfiltration complète — lire un secret, l'exfiltrer, couvrir ses traces) |
+| `CAP-1` | Combinaison de capacités dangereuse : un outil réseau déclaré (`WebFetch`, `WebSearch`) + écriture filesystem + lecture cumulés par le même agent (surface d'exfiltration complète — lire un secret, l'exfiltrer, couvrir ses traces). Depuis la 0.2.0 (D-49 (a) du 20/10/2026), un shell (`Bash`, `PowerShell`) sans outil réseau déclaré ne laisse qu'une note « mineur », non bloquante |
 | `CAP-2` | Outil déclaré absent du référentiel fermé (`oracles/data/referentiel-outils.json`) — supply-chain, typosquat, capacité hallucinée |
 | `CAP-3` | Permissions plus larges que le mandat déclaré (mandat de lecture/revue, outils d'écriture ou d'exécution accordés) |
 | `CAP-4` | Motif d'instruction d'exfiltration ou d'injection dans le texte de l'agent (mandat, arbitre, corps du prompt compilé) |
