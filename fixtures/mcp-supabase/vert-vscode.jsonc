@@ -1,0 +1,10 @@
+// Fixture VERTE oracle-scan-mcp-supabase (TF-2009) : forme VS Code (clé « servers »), commentaires admis.
+{
+  "servers": {
+    "supabase": {
+      "type": "http",
+      // projet de développement, lecture seule, groupes restreints
+      "url": "https://mcp.supabase.com/mcp?project_ref=devexempleaaaaaaaaaa&read_only=true&features=database,docs",
+    },
+  },
+}

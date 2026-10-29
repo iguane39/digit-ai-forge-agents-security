@@ -1,0 +1,102 @@
+{
+  "_commentaire": "Référentiel daté d'oracle-scan-mcp-supabase (TF-2009) : comment reconnaître le serveur MCP de Supabase dans une configuration d'agent, ses paramètres de portée, et les faits qui fondent les règles SB-1 à SB-5. Donnée volatile (loi n° 4) : un paramètre renommé se corrige ici.",
+  "format": "forge-agents-security/mcp-supabase@1",
+  "verifie_le": "2026-10-29",
+  "hote_heberge": "mcp.supabase.com",
+  "serveur_local_cli": { "ports": ["54321"], "chemin": "/mcp" },
+  "paquet_stdio": "@supabase/mcp-server-supabase",
+  "groupe_depense": "branching",
+  "groupe_depense_note": "identifiant déduit de l'intitulé « Branching (experimental) » et de l'exemple features=database,docs : la page lue le 29/10/2026 ne donne pas l'identifiant du groupe",
+  "options_stdio_note": "les options --project-ref, --read-only et --features de la forme stdio ne figurent pas sur la page officielle lue le 29/10/2026 ; le paquet existe (registre npm, version 0.15.0 lue le 29/10/2026) : options lues telles que le paquet les nomme, non vérifiées ce jour",
+  "fichiers_de_configuration": [".mcp.json", "mcp.json", ".cursor/mcp.json", ".vscode/mcp.json", ".claude/settings.json", ".claude/settings.local.json"],
+  "sources": [
+    {
+      "regle": "SB-1",
+      "url": "https://supabase.com/docs/guides/getting-started/mcp",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "project_ref=<id> : to limit it to a single project.",
+        "Scope to a specific project (disables account tools)",
+        "Note: Disabled when using project-scoped mode (project_ref parameter)."
+      ]
+    },
+    {
+      "regle": "SB-1",
+      "url": "https://supabase.com/docs/guides/ai-tools/mcp",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "Scope your MCP server to a specific project, limiting access to only that project's resources.",
+        "This prevents LLMs from accessing data from other projects in your Supabase account."
+      ]
+    },
+    {
+      "regle": "SB-2",
+      "url": "https://supabase.com/docs/guides/getting-started/mcp",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "read_only=true : Execute all queries as a read-only Postgres user."
+      ]
+    },
+    {
+      "regle": "SB-2",
+      "url": "https://supabase.com/docs/guides/ai-tools/mcp",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "Approve in advance only the project-scoped, read-only tools that the routine needs.",
+        "The routine must stop and report a recommendation instead of running a write operation."
+      ]
+    },
+    {
+      "regle": "SB-3",
+      "url": "https://supabase.com/docs/guides/ai-tools/mcp",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "Connect to a production project only when the task requires production evidence.",
+        "The primary attack vector unique to LLMs is prompt injection, which might trick an LLM into following untrusted commands"
+      ]
+    },
+    {
+      "regle": "SB-4",
+      "url": "https://supabase.com/docs/guides/platform/personal-access-tokens",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "tokens created with a scope start with sbp_fc.",
+        "A token with full access carries every permission on every organization and project you belong to."
+      ]
+    },
+    {
+      "regle": "SB-4",
+      "url": "https://supabase.com/docs/guides/getting-started/mcp",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "\"Authorization\": \"Bearer ${SUPABASE_ACCESS_TOKEN}\" (exemple de configuration en intégration continue)"
+      ]
+    },
+    {
+      "regle": "SB-5",
+      "url": "https://supabase.com/docs/guides/getting-started/mcp",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "features=<groups> : Enable only specific tool groups (comma-separated).",
+        "All groups except Storage are enabled by default.",
+        "Branching (experimental) — Note: Requires a paid plan."
+      ]
+    },
+    {
+      "regle": "SB-5",
+      "url": "https://supabase.com/docs/guides/platform/manage-your-usage/branching",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "A branch running on the default Micro Compute size starts at $0.01344 per hour."
+      ]
+    },
+    {
+      "regle": "contexte",
+      "url": "https://registry.npmjs.org/@supabase/mcp-server-supabase/latest",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "version 0.15.0, description « MCP server for interacting with Supabase »"
+      ]
+    }
+  ]
+}

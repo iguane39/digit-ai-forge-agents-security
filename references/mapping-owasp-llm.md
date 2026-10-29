@@ -1,6 +1,6 @@
 # Mapping des règles de la forge → OWASP Top 10 for LLM Applications
 
-Rattache chaque règle **exécutée** de cette forge (`CAP-1..4`, `TC-1..8`, `INJ-1..3`, `WA-1..7`) aux
+Rattache chaque règle **exécutée** de cette forge (`CAP-1..4`, `TC-1..8`, `INJ-1..3`, `WA-1..7`, `SB-1..5`) aux
 catégories du **OWASP Top 10 for LLM Applications, édition 2025** (projet OWASP GenAI
 Security), puis **déclare nommément** ce qu'aucune règle ne couvre.
 
@@ -58,17 +58,22 @@ confonde la règle avec la catégorie entière.
 | `WA-5` | `oracle-scan-workflow-agent` | permissions de l'agent contournées, ou shell libre et réseau sur un déclencheur de tiers | **LLM06** | LLM02 |
 | `WA-6` | `oracle-scan-workflow-agent` | `id-token: write` sur le job de l'agent (info, jamais un défaut) | **LLM06** | LLM02 |
 | `WA-7` | `oracle-scan-workflow-agent` | job de préparation de l'agent Copilot avec une permission d'écriture | **LLM06** | — |
+| `SB-1` | `oracle-scan-mcp-supabase` | serveur MCP de Supabase sans `project_ref` : tous les projets du compte atteints | **LLM06** | LLM02 |
+| `SB-2` | `oracle-scan-mcp-supabase` | serveur MCP de Supabase sans lecture seule | **LLM06** | — |
+| `SB-3` | `oracle-scan-mcp-supabase` | serveur MCP de Supabase pointé sur un projet de production déclaré | **LLM06** | LLM02 |
+| `SB-4` | `oracle-scan-mcp-supabase` | jeton personnel Supabase écrit en clair dans une configuration | **LLM02** | LLM06 |
+| `SB-5` | `oracle-scan-mcp-supabase` | groupe d'outils qui dépense (branching) actif, explicitement ou par défaut | **LLM06** | LLM10 |
 
 ### Lecture inverse — catégorie → règles
 
 | Catégorie | Règles qui la touchent | Niveau réel de couverture |
 |---|---|---|
 | **LLM01** Prompt Injection | CAP-4, TC-4, INJ-1, INJ-2, INJ-3, WA-2, WA-4 | **partielle, mesurée** — 34 charges du corpus rejouées sur artefact statique ; ni modèle vivant, ni reformulations hors corpus ; WA-2 et WA-4 ferment deux voies d'entrée d'un workflow (consigne interpolée, code de pull request lu) |
-| **LLM02** Sensitive Information Disclosure | TC-1, TC-3, CAP-1, CAP-4, TC-4, INJ-2, WA-3 | **partielle** — chemins de secrets et sorties réseau observés ; secrets posés dans l'environnement d'un agent de workflow (WA-3) ; aucune détection de secret **dans le contenu** transmis (regex de chemin, pas de classifieur de donnée) |
+| **LLM02** Sensitive Information Disclosure | TC-1, TC-3, CAP-1, CAP-4, TC-4, INJ-2, WA-3, SB-4 | **partielle** — chemins de secrets et sorties réseau observés ; secrets posés dans l'environnement d'un agent de workflow (WA-3) ; jeton Supabase en clair dans une configuration MCP (SB-4) ; aucune détection de secret **dans le contenu** transmis (regex de chemin, pas de classifieur de donnée) |
 | **LLM03** Supply Chain | CAP-2 | **marginale** — référentiel d'outils fermé uniquement ; ni provenance de modèle, ni intégrité de dépendance, ni signature de plugin/MCP |
 | **LLM04** Data and Model Poisoning | TC-5 (effleuré), INJ-1 (effleuré) | **NON COUVERTE** — voir §2 |
 | **LLM05** Improper Output Handling | TC-1 (pipe vers interpréteur), INJ-2 | **marginale** — un seul puits aval couvert (le shell) ; aucun contrôle d'assainissement vers HTML, SQL, rendu markdown, navigateur |
-| **LLM06** Excessive Agency | CAP-1, CAP-2, CAP-3, TC-2, TC-5, INJ-2, TC-6/TC-8 (effleuré), WA-1, WA-5, WA-7 | **la mieux couverte** — surface déclarée (statique) + périmètre observé (dynamique) + agent de workflow (qui le déclenche, quels outils) ; reste hors champ : les actions à effet externe non journalisées |
+| **LLM06** Excessive Agency | CAP-1, CAP-2, CAP-3, TC-2, TC-5, INJ-2, TC-6/TC-8 (effleuré), WA-1, WA-5, WA-7, SB-1, SB-2, SB-3, SB-5 | **la mieux couverte** — surface déclarée (statique) + périmètre observé (dynamique) + agent de workflow (qui le déclenche, quels outils) + portée d'un serveur MCP de base de données (projet, lecture seule, production, groupes d'outils) ; reste hors champ : les actions à effet externe non journalisées |
 | **LLM07** System Prompt Leakage | TC-3 (effleuré), charges INJ-D-03/D-04 (tentatives) | **NON COUVERTE** — voir §2 |
 | **LLM08** Vector and Embedding Weaknesses | charge INJ-I-12 (tentative) | **NON COUVERTE** — voir §2 |
 | **LLM09** Misinformation | charges INJ-I-06/I-12/I-17 (tentatives) | **NON COUVERTE** — voir §2 |

@@ -383,5 +383,89 @@ console.log("\nSELF-TEST forge-agents-security — oracle-scan-workflow-agent (a
     `référentiel workflow-agent : chaque règle WA-1..7 a sa page, citée et lue le 29/10/2026 (${refW.sources.length} sources)`);
 }
 
+console.log("\nSELF-TEST forge-agents-security — oracle-scan-mcp-supabase (serveur MCP de Supabase, TF-2009)\n");
+
+// Le fait : le serveur MCP officiel de Supabase donne à un agent la main sur un projet (SQL, migrations,
+// branches) ; aucune règle de la forge n'en jugeait la portée, la lecture seule ni le projet visé. Chaque rouge
+// échoue sur SA règle ; la production se déclare (--production), sans quoi le verdict n'est jamais PASS.
+{
+  const ORACLE_SB = path.join(HERE, "oracle-scan-mcp-supabase.mjs");
+  const FXS = (f) => FX("mcp-supabase", f);
+  const PROD = ["--production", "prodexempleaaaaaaaaa"];
+  const durs = (r) => (r.findings || []).filter((f) => f.sev === "bloquant" || f.sev === "majeur");
+  const regles = (r) => [...new Set(durs(r).map((f) => f.regle))].sort().join(",");
+  for (const [f, attendu, quoi] of [
+    ["rouge-sans-portee.mcp.json", "SB-1", "aucun project_ref"],
+    ["rouge-ecriture.mcp.json", "SB-2", "pas de read_only=true"],
+    ["rouge-production.mcp.json", "SB-3", "project_ref du projet de production déclaré"],
+    ["rouge-jeton-en-clair.mcp.json", "SB-4", "jeton sbp_ littéral dans l'en-tête Authorization"],
+    ["rouge-branching.mcp.json", "SB-5", "features nomme branching, une dépense"],
+  ]) {
+    const r = runJson(ORACLE_SB, [FXS(f), ...PROD]);
+    ok(r.verdict === "FAIL" && regles(r) === attendu && durs(r).every((x) => !!x.source),
+      `${f} (${quoi}) → FAIL sur ${attendu} seul, sa page citée (obtenu ${r.verdict}, ${regles(r) || "aucun"})`);
+  }
+  {
+    const r = runJson(ORACLE_SB, [FXS("rouge-stdio.mcp.json"), ...PROD]);
+    ok(r.verdict === "FAIL" && regles(r) === "SB-1,SB-2,SB-4" && durs(r).filter((x) => x.regle === "SB-4").length === 2,
+      `rouge-stdio.mcp.json (paquet stdio sans --project-ref ni --read-only, jeton dans env) → FAIL sur SB-1, SB-2 et SB-4 (obtenu ${regles(r) || "aucun"})`);
+  }
+  for (const [f, quoi] of [["vert-heberge.mcp.json", "projet de développement, lecture seule, groupes restreints"],
+    ["vert-vscode.jsonc", "forme VS Code, clé servers et commentaires"], ["vert-local-cli.mcp.json", "serveur local de la CLI"]]) {
+    const r = runJson(ORACLE_SB, [FXS(f), ...PROD]);
+    ok(r.verdict === "PASS" && durs(r).length === 0, `${f} (${quoi}) → PASS (obtenu ${r.verdict})`);
+  }
+  {
+    const r = runJson(ORACLE_SB, [FXS("vert-ci-variable.mcp.json"), ...PROD]);
+    ok(r.verdict === "PASS" && (r.findings || []).some((x) => x.regle === "SB-3" && x.sev === "mineur"),
+      `vert-ci-variable.mcp.json (exemple CI de la documentation, durci : jeton et projet en variables) → PASS, la variable dite en SB-3 mineur (obtenu ${r.verdict})`);
+  }
+  {
+    const r = runJson(ORACLE_SB, [FXS("vert-heberge.mcp.json")]);
+    ok(r.verdict === "donnees_insuffisantes", `sans --production ni --aucune-production → donnees_insuffisantes, jamais PASS : « jamais la production » n'est pas jugée (obtenu ${r.verdict})`);
+    const rA = runJson(ORACLE_SB, [FXS("vert-heberge.mcp.json"), "--aucune-production", "projet de démonstration sans production au 29/10/2026"]);
+    ok(rA.verdict === "PASS", `--aucune-production motivé → PASS (obtenu ${rA.verdict})`);
+    const rC = runJson(ORACLE_SB, [FXS("vert-heberge.mcp.json"), "--aucune-production", "court"]);
+    ok(rC.verdict === "donnees_insuffisantes", `--aucune-production sans vrai motif → donnees_insuffisantes, le silence n'est pas une réponse (obtenu ${rC.verdict})`);
+  }
+  // TF-1013 : chaque remède nommé, joué, rend PASS. Fixtures en CRLF ou LF : remplacements sur le texte JSON.
+  const tmpS = fs.mkdtempSync(path.join(os.tmpdir(), "forge-agents-security-tf2009-"));
+  try {
+    const remede = (fixture, nom, modifier) => {
+      const p = path.join(tmpS, nom);
+      fs.writeFileSync(p, modifier(fs.readFileSync(FXS(fixture), "utf8")), "utf8");
+      return runJson(ORACLE_SB, [p, ...PROD]).verdict;
+    };
+    ok(remede("rouge-sans-portee.mcp.json", "r1.json", (t) => t.replace("mcp?read_only", "mcp?project_ref=devexempleaaaaaaaaaa&read_only")) === "PASS", "remède SB-1 joué : project_ref d'un projet de développement → PASS (TF-1013)");
+    ok(remede("rouge-ecriture.mcp.json", "r2.json", (t) => t.replace("&features", "&read_only=true&features")) === "PASS", "remède SB-2 joué : read_only=true → PASS (TF-1013)");
+    ok(remede("rouge-production.mcp.json", "r3.json", (t) => t.replace("prodexempleaaaaaaaaa", "devexempleaaaaaaaaaa")) === "PASS", "remède SB-3 joué : projet de développement au lieu de la production → PASS (TF-1013)");
+    ok(remede("rouge-jeton-en-clair.mcp.json", "r4.json", (t) => t.replace("Bearer sbp_EXEMPLEFACTICE0000000", "Bearer ${SUPABASE_ACCESS_TOKEN}")) === "PASS", "remède SB-4 joué : jeton passé par une variable d'environnement → PASS (TF-1013)");
+    ok(remede("rouge-branching.mcp.json", "r5.json", (t) => t.replace("database,branching", "database,docs")) === "PASS", "remède SB-5 joué : branching retiré des groupes → PASS (TF-1013)");
+    const sansFeatures = remede("vert-heberge.mcp.json", "r6.json", (t) => t.replace("&features=database,docs", ""));
+    ok(sansFeatures === "FAIL", `features absent → FAIL : tous les groupes sauf Storage sont actifs par défaut, Branching compris (obtenu ${sansFeatures})`);
+    // Un dossier se lit par ses fichiers de configuration connus ; un serveur MCP qui n'est pas Supabase n'est pas jugé.
+    const dossier = path.join(tmpS, "produit");
+    fs.mkdirSync(path.join(dossier, ".cursor"), { recursive: true });
+    fs.copyFileSync(FXS("vert-heberge.mcp.json"), path.join(dossier, ".mcp.json"));
+    fs.copyFileSync(FXS("rouge-ecriture.mcp.json"), path.join(dossier, ".cursor", "mcp.json"));
+    const rD = runJson(ORACLE_SB, [dossier, ...PROD]);
+    ok(rD.verdict === "FAIL" && regles(rD) === "SB-2" && durs(rD).every((x) => x.where.startsWith(".cursor/mcp.json")),
+      `dossier produit (.mcp.json et .cursor/mcp.json) → FAIL, le constat localisé dans .cursor/mcp.json (obtenu ${rD.verdict})`);
+    const autre = path.join(tmpS, "autre.json");
+    fs.writeFileSync(autre, JSON.stringify({ mcpServers: { github: { type: "http", url: "https://api.githubcopilot.com/mcp/" } } }), "utf8");
+    ok(runJson(ORACLE_SB, [autre, ...PROD]).verdict === "SKIP", "configuration sans serveur Supabase → SKIP, rien à juger");
+    const casse = path.join(tmpS, "casse.json");
+    fs.writeFileSync(casse, "{ pas du json", "utf8");
+    ok(runJson(ORACLE_SB, [casse, ...PROD]).verdict === "FAIL", "configuration illisible → FAIL dit, jamais un PASS silencieux");
+  } finally {
+    fs.rmSync(tmpS, { recursive: true, force: true });
+  }
+  ok(runJson(ORACLE_SB, [FXS("n-existe-pas.json"), ...PROD]).verdict === "SKIP", "cible introuvable → SKIP, jamais PASS");
+  const refS = JSON.parse(fs.readFileSync(path.join(HERE, "data", "referentiel-mcp-supabase.json"), "utf8"));
+  ok(refS.verifie_le === "2026-10-29" && refS.sources.every((s) => /^https:\/\//.test(s.url) && s.lu_le === "2026-10-29" && s.citations?.length)
+      && ["SB-1", "SB-2", "SB-3", "SB-4", "SB-5"].every((r) => refS.sources.some((s) => s.regle === r)),
+    `référentiel mcp-supabase : chaque règle SB-1..5 a sa page, citée et lue le 29/10/2026 (${refS.sources.length} sources)`);
+}
+
 console.log(`\nSelf-test forge-agents-security : ${pass} PASS, ${echec} FAIL`);
 process.exit(echec ? 1 : 0);

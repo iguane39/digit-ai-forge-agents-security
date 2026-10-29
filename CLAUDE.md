@@ -25,13 +25,19 @@ Forge de **sécurité agentique** — le juge, séparé du jugé (`forge-agents`
 ## Point d'entrée
 
 ```
-node oracles/self-test.mjs                      # preuve intégrale (76 PASS attendus, mesuré le 29/10/2026)
+node oracles/self-test.mjs                      # preuve intégrale (100 PASS attendus, mesuré le 29/10/2026)
 node oracles/decouvrir-oracles.mjs               # liste des oracles LUE SUR LE DISQUE (TF-1319, contrat du pilot)
 node oracles/oracle-scan-agentdef.mjs <fichier>  # scan statique d'un agent
 node oracles/oracle-scan-toolcalls.mjs <journal.jsonl> --perimetre <dossier>  # scan dynamique
 node oracles/oracle-corpus-injection.mjs <cible> # rejeu du corpus d'injections (OWASP LLM01)
 node oracles/oracle-scan-workflow-agent.mjs <dépôt|workflows|fichier.yml>  # agent lancé par GitHub Actions (WA-1..7, TF-2002)
+node oracles/oracle-scan-mcp-supabase.mjs <fichier|dossier> --production <ref>  # serveur MCP de Supabase (SB-1..5, TF-2009)
 ```
+
+`oracle-scan-mcp-supabase.mjs` juge chaque serveur MCP de Supabase d'une configuration d'agent : portée à un
+projet, lecture seule, jamais la production, aucun jeton en clair, aucun groupe d'outils qui dépense. La
+production se déclare (`--production`, ou `--aucune-production "<motif>"`) : sans elle, jamais de PASS. Pages
+lues le 29/10/2026 : `oracles/data/referentiel-mcp-supabase.json`.
 
 `oracle-scan-workflow-agent.mjs` lit les workflows qui lancent un agent (`claude-code-action`, `claude -p`,
 `copilot -p`, `copilot-setup-steps`). Il juge qui peut le déclencher, quel texte de tiers devient sa consigne,

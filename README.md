@@ -50,7 +50,8 @@ Le catalogue consolidé des dix forges vit chez le pilot :
 | `oracles/oracle-corpus-injection.mjs` — rejeu du **corpus d'injections de prompt** contre une cible statique (définition d'agent ou journal) | **prouvé** | 8 fixtures (`fixtures/injection/`) dont 2 voisins légitimes, rejouées par `self-test.mjs` |
 | `corpus/injection-prompt.jsonl` — corpus versionné de **34 charges** (17 directes, 17 indirectes) | **prouvé** | intégrité (schéma, unicité des id, chaque signature reconnaît sa charge) contrôlée par `self-test.mjs` |
 | `oracles/oracle-scan-workflow-agent.mjs` — scan **statique** des workflows GitHub Actions qui lancent un agent (TF-2002) | **prouvé** | 11 fixtures (`fixtures/workflow-agent/`), dont 3 vertes tirées de la documentation ou voisines légitimes, rejouées par `self-test.mjs` avec chaque remède |
-| `oracles/self-test.mjs` — rejeu intégral à double sens (vert doit passer, rouge doit échouer *pour la bonne raison*) | **prouvé** | 76/76 PASS à la dernière exécution connue, le 29/10/2026 (rejouer avant de faire confiance) |
+| `oracles/oracle-scan-mcp-supabase.mjs` — scan **statique** des configurations qui donnent à un agent le serveur MCP de Supabase (TF-2009) | **prouvé** | 10 fixtures (`fixtures/mcp-supabase/`), dont 4 vertes, rejouées par `self-test.mjs` avec chaque remède |
+| `oracles/self-test.mjs` — rejeu intégral à double sens (vert doit passer, rouge doit échouer *pour la bonne raison*) | **prouvé** | 100/100 PASS à la dernière exécution connue, le 29/10/2026 (rejouer avant de faire confiance) |
 
 « Prouvé » signifie : chaque règle a une fixture verte qui passe et une fixture rouge
 voisine qui échoue pour la raison attendue (code `regle` vérifié, pas seulement le verdict
@@ -173,6 +174,43 @@ node oracles/oracle-scan-workflow-agent.mjs <dépôt | dossier de workflows | fi
 sans agent (WF-1 à WF-4 de forge-websec) ; la configuration MCP passée par `--mcp-config` ; un secret écrit
 dans un fichier par une étape antérieure ; la confiance fédérée côté cloud.
 
+### `oracle-scan-mcp-supabase.mjs` — le serveur MCP de Supabase donné à un agent (TF-2009)
+
+Le serveur MCP officiel de Supabase donne à un agent la main sur un projet : requêtes SQL, migrations,
+branches, fonctions. L'oracle lit les fichiers de configuration MCP (`.mcp.json`, `.cursor/mcp.json`,
+`.vscode/mcp.json`, `.claude/settings.json`, ou un fichier passé en argument) et juge chaque entrée de
+serveur Supabase : hébergé (`mcp.supabase.com`), local de la CLI (port 54321) ou paquet stdio
+`@supabase/mcp-server-supabase`.
+
+| Règle | Détecte |
+|---|---|
+| `SB-1` | aucun `project_ref` : l'agent atteint tous les projets du compte et ses outils de compte |
+| `SB-2` | pas de `read_only=true` : les requêtes de l'agent écrivent |
+| `SB-3` | `project_ref` d'un projet de production déclaré par `--production` |
+| `SB-4` | jeton en clair : en-tête `Authorization`, `SUPABASE_ACCESS_TOKEN` ou option à valeur littérale, toute chaîne `sbp_…` du fichier |
+| `SB-5` | `features` absent (tous les groupes sauf Storage sont actifs par défaut, Branching compris) ou qui nomme `branching` : un agent peut créer une branche facturée, une dépense qui reste humaine |
+
+**La règle de la Factory est plus stricte que la documentation.** Supabase écrit : « Connect to a production
+project only when the task requires production evidence. » La Factory pose : jamais la production dans une
+configuration d'agent. La production se déclare : `--production <ref>[,<ref>]`, ou `--aucune-production
+"<motif>"`. Sans l'un ni l'autre, un `project_ref` littéral rend `donnees_insuffisantes`, jamais PASS. Un
+`project_ref` résolu par une variable (`${SUPABASE_PROJECT_REF}`) est dit en `SB-3` mineur : la règle se joue
+dans l'environnement qui le résout. Le serveur local de la CLI sert la pile de développement : seule `SB-4`
+s'y applique.
+
+Pages lues le 29/10/2026 : `oracles/data/referentiel-mcp-supabase.json`. Les options de la forme stdio
+(`--project-ref`, `--read-only`, `--features`) ne figurent pas sur la page officielle lue ce jour : elles sont
+lues telles que le paquet les nomme, et marquées non vérifiées. L'identifiant `branching` est déduit de
+l'intitulé du groupe.
+
+```
+node oracles/oracle-scan-mcp-supabase.mjs <fichier.json | dossier> [--production <ref>[,<ref>]] [--aucune-production "<motif>"] [--json-only]
+```
+
+**Ce qui n'est pas jugé :** les autres serveurs MCP ; la portée réelle du jeton, choisie à sa création ; la
+vérité de la déclaration `--production` ; l'approbation manuelle des appels d'outils, réglée dans le client ;
+une configuration passée en ligne à un agent (`--mcp-config '{…}'`).
+
 ### Contrat de sortie (les oracles)
 
 ```json
@@ -184,7 +222,8 @@ dans un fichier par une étape antérieure ; la confiance fédérée côté clou
 `oracle-corpus-injection.mjs` ajoute un champ `domaine`
 (`securite-agentique/injection-de-prompt`) entre `version` et `artefact`.
 `oracle-scan-workflow-agent.mjs` ajoute `domaine` (`securite-agentique/agent-dans-un-workflow`), un champ
-`source` par constat et un tableau `sources` (page, date de lecture).
+`source` par constat et un tableau `sources` (page, date de lecture). `oracle-scan-mcp-supabase.mjs` fait de
+même (`securite-agentique/serveur-mcp-supabase`).
 
 Exit `0` = PASS, `1` = FAIL, `2` = SKIP / `donnees_insuffisantes`.
 
@@ -194,7 +233,7 @@ Exit `0` = PASS, `1` = FAIL, `2` = SKIP / `donnees_insuffisantes`.
 node oracles/self-test.mjs
 ```
 
-Sortie attendue : `76 PASS, 0 FAIL` (mesuré le 29/10/2026). À rejouer après toute modification d'une règle, d'une
+Sortie attendue : `100 PASS, 0 FAIL` (mesuré le 29/10/2026). À rejouer après toute modification d'une règle, d'une
 fixture ou du corpus — un `✓` sans self-test rejoué n'est pas un `✓`.
 
 ## Limites explicites (ce que la v0 n'est pas)
@@ -246,10 +285,12 @@ oracles/
   oracle-scan-toolcalls.mjs    scan dynamique journal JSONL d'appels d'outils
   oracle-corpus-injection.mjs  rejeu du corpus d'injections de prompt (LLM01)
   oracle-scan-workflow-agent.mjs  agent lancé par un workflow GitHub Actions (TF-2002)
+  oracle-scan-mcp-supabase.mjs serveur MCP de Supabase donné à un agent (TF-2009)
   lib-yaml.mjs                 lecteur YAML natif, copie de celui de forge-websec (pas un oracle)
   self-test.mjs                rejeu intégral à double sens
   data/referentiel-outils.json catalogue fermé des outils reconnus
   data/referentiel-workflow-agent.json  actions et commandes d'agent, pages lues le 29/10/2026
+  data/referentiel-mcp-supabase.json    paramètres du serveur MCP de Supabase, pages lues le 29/10/2026
 corpus/
   injection-prompt.jsonl       34 charges d'injection (17 directes / 17 indirectes) — DONNÉE de test
 fixtures/
@@ -257,6 +298,7 @@ fixtures/
   toolcalls/                   11 fixtures JSONL (vertes + rouges) + allowlist de domaines
   injection/                   8 fixtures pour oracle-corpus-injection, dont 2 voisins légitimes
   workflow-agent/              11 workflows (3 verts, 8 rouges) pour oracle-scan-workflow-agent
+  mcp-supabase/                10 configurations MCP (4 vertes, 6 rouges) pour oracle-scan-mcp-supabase
 references/
   FORMAT-JOURNAL.md            schéma documenté du journal JSONL (champ `output` inclus)
   mapping-owasp-llm.md         règles CAP/TC/INJ → OWASP LLM Top 10 + trous déclarés
