@@ -1,0 +1,17 @@
+# Fixture ROUGE WA-1 (TF-2002) : Claude Code en ligne de commande lancé par toute issue ouverte, sans
+# filtre sur l'auteur — la ligne de commande ne vérifie aucun droit.
+name: tri-des-issues
+on:
+  issues:
+    types: [opened]
+permissions:
+  contents: read
+  issues: write
+jobs:
+  tri:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: claude -p "Classe la dernière issue ouverte et pose une étiquette" --allowedTools "Read,mcp__github__add_labels"

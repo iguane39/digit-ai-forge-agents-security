@@ -305,5 +305,83 @@ const rc = (fichier, opts = {}) => runJson(ORACLE_CORPUS, [
     `TF-1319 · ROUGE — une racine absente sort en 2 avec son motif, jamais en liste vide muette (obtenu exit ${absente.code})`);
 }
 
+console.log("\nSELF-TEST forge-agents-security — oracle-scan-workflow-agent (agent lancé par un workflow, TF-2002)\n");
+
+// Le fait : un agent lancé par GitHub Actions (claude-code-action, Claude Code ou Copilot en ligne de commande)
+// n'était jugé par aucune règle de la forge — ni qui le déclenche, ni quels secrets son shell lit, ni quel texte
+// devient sa consigne. Chaque rouge échoue pour UNE raison, la sienne ; chaque verte vient d'un exemple de la
+// documentation lue le 29/10/2026 ou d'un voisin légitime.
+{
+  const ORACLE_WA = path.join(HERE, "oracle-scan-workflow-agent.mjs");
+  const FXW = (f) => FX("workflow-agent", f);
+  const durs = (r) => (r.findings || []).filter((f) => f.sev === "bloquant" || f.sev === "majeur");
+  const seul = (r, regle, sev) => durs(r).length === 1 && durs(r)[0].regle === regle && durs(r)[0].sev === sev;
+  for (const [f, regle, sev, quoi] of [
+    ["rouge-ouvert-a-tous.yml", "WA-1", "bloquant", "allowed_non_write_users '*'"],
+    ["rouge-cli-sans-filtre.yml", "WA-1", "bloquant", "Claude Code en ligne de commande sur une issue, sans filtre d'auteur"],
+    ["rouge-consigne-tiers.yml", "WA-2", "majeur", "corps de l'issue interpolé dans prompt"],
+    ["rouge-secret-expose.yml", "WA-3", "bloquant", "secret de déploiement dans l'env du job de l'agent"],
+    ["rouge-checkout-pr.yml", "WA-4", "bloquant", "pull_request_target et tête de la PR extraite à la racine"],
+    ["rouge-outils-libres.yml", "WA-5", "majeur", "Bash et WebFetch sans borne sur un commentaire"],
+    ["rouge-permissions-contournees.yml", "WA-5", "bloquant", "--dangerously-skip-permissions, même sur une cadence"],
+    ["rouge-copilot-setup.yml", "WA-7", "majeur", "copilot-setup-steps avec contents: write"],
+  ]) {
+    const r = runJson(ORACLE_WA, [FXW(f)]);
+    ok(r.verdict === "FAIL" && seul(r, regle, sev) && !!durs(r)[0].source,
+      `${f} (${quoi}) → FAIL avec ${regle} ${sev}, ce seul constat, sa page citée (obtenu ${r.verdict}, ${durs(r).map((x) => x.regle).join(",") || "aucun"})`);
+  }
+  {
+    const r = runJson(ORACLE_WA, [FXW("vert-claude-mention.yml")]);
+    ok(r.verdict === "PASS" && aRegle(r, "WA-6") && durs(r).length === 0,
+      `vert-claude-mention.yml (exemple de la documentation Claude Code) → PASS, id-token: write dit en WA-6 info (obtenu ${r.verdict})`);
+  }
+  for (const [f, quoi] of [["vert-cli-filtre.yml", "ligne de commande réservée par author_association, outils bornés"], ["vert-copilot-cli.yml", "exemple Copilot de la documentation GitHub"]]) {
+    const r = runJson(ORACLE_WA, [FXW(f)]);
+    ok(r.verdict === "PASS" && durs(r).length === 0, `${f} (voisin légitime : ${quoi}) → PASS (obtenu ${r.verdict})`);
+  }
+  // TF-1013 : chaque remède que nomme un constat, joué, rend PASS. Les fixtures peuvent être en CRLF (extraction
+  // Windows) : les remplacements tolèrent les deux fins de ligne.
+  const tmpW = fs.mkdtempSync(path.join(os.tmpdir(), "forge-agents-security-tf2002-"));
+  try {
+    const remede = (fixture, nom, modifier) => {
+      const p = path.join(tmpW, nom);
+      fs.writeFileSync(p, modifier(fs.readFileSync(FXW(fixture), "utf8")), "utf8");
+      return runJson(ORACLE_WA, [p]);
+    };
+    const rFiltre = remede("rouge-cli-sans-filtre.yml", "remede-filtre.yml", (t) => t.replace(/^(  tri:)(\r?\n)/m,
+      `$1$2    if: contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)$2`));
+    ok(rFiltre.verdict === "PASS", `remède WA-1 joué : filtre author_association posé sur le job → PASS (TF-1013 ; obtenu ${rFiltre.verdict})`);
+    const rConsigne = remede("rouge-consigne-tiers.yml", "remede-consigne.yml", (t) => t.replace(/^(\s*prompt: ).*$/m, "$1\"Implémente la demande de l'issue courante, lue par l'action\""));
+    ok(rConsigne.verdict === "PASS", `remède WA-2 joué : plus aucun texte de tiers interpolé dans prompt → PASS (TF-1013 ; obtenu ${rConsigne.verdict})`);
+    const rSecret = remede("rouge-secret-expose.yml", "remede-secret.yml", (t) => t.replace(/^    env:\r?\n      AZURE_CLIENT_SECRET: .*\r?\n/m, ""));
+    ok(rSecret.verdict === "PASS", `remède WA-3 joué : le secret quitte le job de l'agent → PASS (TF-1013 ; obtenu ${rSecret.verdict})`);
+    const rCheckout = remede("rouge-checkout-pr.yml", "remede-checkout.yml", (t) => t.replace(/^(\s*)ref: (\$\{\{ github\.event\.pull_request\.head\.sha \}\})(\r?\n)/m, "$1ref: $2$3$1path: tete-de-la-pr$3"));
+    ok(rCheckout.verdict === "PASS", `remède WA-4 joué : la tête de la PR extraite dans un sous-dossier → PASS (TF-1013 ; obtenu ${rCheckout.verdict})`);
+    const rOutils = remede("rouge-outils-libres.yml", "remede-outils.yml", (t) => t.replace("Bash,WebFetch,Read", "Read,Bash(git status:*)"));
+    ok(rOutils.verdict === "PASS", `remède WA-5 joué : shell borné à une commande nommée, réseau retiré → PASS (TF-1013 ; obtenu ${rOutils.verdict})`);
+    // Un dépôt entier se lit par son dossier .github/workflows ; un workflow sans agent n'a rien à juger.
+    const depot = path.join(tmpW, "depot");
+    fs.mkdirSync(path.join(depot, ".github", "workflows"), { recursive: true });
+    fs.copyFileSync(FXW("rouge-secret-expose.yml"), path.join(depot, ".github", "workflows", "claude.yml"));
+    fs.copyFileSync(FXW("vert-copilot-cli.yml"), path.join(depot, ".github", "workflows", "copilot.yml"));
+    const rDepot = runJson(ORACLE_WA, [depot]);
+    ok(rDepot.verdict === "FAIL" && durs(rDepot).length === 1 && /claude\.yml/.test(durs(rDepot)[0].where),
+      `dépôt entier (.github/workflows, 2 fichiers) → FAIL, le seul constat localisé dans claude.yml (obtenu ${rDepot.verdict})`);
+    const sansAgent = path.join(tmpW, "ci.yml");
+    fs.writeFileSync(sansAgent, "on: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npm test\n", "utf8");
+    ok(runJson(ORACLE_WA, [sansAgent]).verdict === "SKIP", "workflow sans agent → SKIP, rien à juger");
+    const ancre = path.join(tmpW, "ancre.yml");
+    fs.writeFileSync(ancre, "on: [push]\njobs:\n  a: &a\n    runs-on: ubuntu-latest\n", "utf8");
+    ok(runJson(ORACLE_WA, [ancre]).verdict === "FAIL", "workflow que le lecteur YAML refuse (ancre) → FAIL dit, jamais un PASS silencieux");
+  } finally {
+    fs.rmSync(tmpW, { recursive: true, force: true });
+  }
+  ok(runJson(ORACLE_WA, [FXW("n-existe-pas.yml")]).verdict === "SKIP", "cible introuvable → SKIP, jamais PASS");
+  const refW = JSON.parse(fs.readFileSync(path.join(HERE, "data", "referentiel-workflow-agent.json"), "utf8"));
+  ok(refW.verifie_le === "2026-10-29" && refW.sources.length >= 10 && refW.sources.every((s) => /^https:\/\//.test(s.url) && s.lu_le === "2026-10-29" && s.citations?.length)
+      && ["WA-1", "WA-2", "WA-3", "WA-4", "WA-5", "WA-6", "WA-7"].every((r) => refW.sources.some((s) => s.regle === r)),
+    `référentiel workflow-agent : chaque règle WA-1..7 a sa page, citée et lue le 29/10/2026 (${refW.sources.length} sources)`);
+}
+
 console.log(`\nSelf-test forge-agents-security : ${pass} PASS, ${echec} FAIL`);
 process.exit(echec ? 1 : 0);

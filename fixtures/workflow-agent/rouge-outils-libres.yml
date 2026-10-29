@@ -1,0 +1,17 @@
+# Fixture ROUGE WA-5 (TF-2002) : sur un commentaire, l'agent reçoit le shell libre et le réseau.
+name: claude
+on:
+  issue_comment:
+    types: [created]
+jobs:
+  claude:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: --allowedTools "Bash,WebFetch,Read"

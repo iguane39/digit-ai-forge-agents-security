@@ -1,0 +1,20 @@
+# Fixture ROUGE WA-4 (TF-2002) : sous pull_request_target, le code de la pull request est extrait à la
+# racine de l'espace de travail avant l'agent, qui y lit CLAUDE.md et ses réglages.
+name: revue-des-pull-requests
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+jobs:
+  revue:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: "Relis cette pull request"

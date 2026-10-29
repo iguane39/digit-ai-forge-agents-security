@@ -1,0 +1,18 @@
+# Fixture ROUGE WA-2 (TF-2002) : le corps de l'issue, écrit par n'importe qui, devient la consigne.
+name: claude-automatique
+on:
+  issues:
+    types: [opened]
+jobs:
+  claude:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: "Implémente cette demande : ${{ github.event.issue.body }}"

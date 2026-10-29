@@ -1,0 +1,20 @@
+# Fixture VERTE (TF-2002) : l'exemple « Copilot CLI example » de la documentation GitHub lue le
+# 29/10/2026 — déclenché par un push, shell borné à git show, jeton du run.
+name: Copilot CLI example
+on: [push]
+permissions:
+  contents: read
+  copilot-requests: write
+jobs:
+  copilot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+      - name: Run Copilot
+        run: copilot -p "Use git show HEAD to summarize the changes in this commit" -s --allow-tool='shell(git show:*)'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

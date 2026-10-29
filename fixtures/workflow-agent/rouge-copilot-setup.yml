@@ -1,0 +1,11 @@
+# Fixture ROUGE WA-7 (TF-2002) : le job de préparation de l'agent Copilot garde l'écriture du dépôt.
+name: Copilot Setup Steps
+on: workflow_dispatch
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - run: npm ci

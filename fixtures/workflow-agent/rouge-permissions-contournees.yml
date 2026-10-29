@@ -1,0 +1,19 @@
+# Fixture ROUGE WA-5 (TF-2002) : même sur une cadence, contourner les permissions de l'agent est refusé.
+name: rapport-quotidien
+on:
+  schedule:
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rapport:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: "Résume les commits d'hier"
+          claude_args: |
+            --dangerously-skip-permissions
+            --max-turns 5

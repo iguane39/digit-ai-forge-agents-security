@@ -1,0 +1,17 @@
+# Fixture VERTE (TF-2002) : Claude Code en ligne de commande sur un commentaire, réservé aux auteurs de
+# confiance par author_association, outils bornés, consigne qui ne recopie aucun texte de tiers.
+name: revue-sur-demande
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+jobs:
+  revue:
+    if: contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: claude -p "Relis le dernier commit et résume-le" --allowedTools "Read,Bash(git show:*)"

@@ -29,8 +29,8 @@ Le catalogue consolidé des dix forges vit chez le pilot :
 - **Elle outille, ne décide jamais.** Un verdict `FAIL` est un constat argumenté et
   localisé — jamais un blocage automatique d'un run, jamais une correction appliquée à la
   place d'un humain.
-- **Zéro API tierce payante.** Zéro dépendance npm. Trois oracles Node natifs (`.mjs`), plus
-  `oracles/decouvrir-oracles.mjs` qui les liste depuis le disque pour le juge d'enclenchement du
+- **Zéro API tierce payante.** Zéro dépendance npm. Des oracles Node natifs (`oracles/oracle-*.mjs`),
+  que `oracles/decouvrir-oracles.mjs` liste depuis le disque pour le juge d'enclenchement du
   pilot (TF-1319), aucune installation. Aucun oracle n'appelle de modèle : la forge n'a pas de budget alloué
   et n'en réclame pas.
 - **Zéro donnée réelle.** Dépôt public : toutes les fixtures sont synthétiques (domaines,
@@ -49,7 +49,8 @@ Le catalogue consolidé des dix forges vit chez le pilot :
 | `oracles/oracle-scan-toolcalls.mjs` — scan **dynamique** d'un journal JSONL d'appels d'outils | **prouvé** | 18 fixtures JSONL dont 2 voisins légitimes (lot borné, boucle qui progresse) + 1 allowlist de domaines + 2 jeux de seuils (`fixtures/toolcalls/`), rejouées par `self-test.mjs` |
 | `oracles/oracle-corpus-injection.mjs` — rejeu du **corpus d'injections de prompt** contre une cible statique (définition d'agent ou journal) | **prouvé** | 8 fixtures (`fixtures/injection/`) dont 2 voisins légitimes, rejouées par `self-test.mjs` |
 | `corpus/injection-prompt.jsonl` — corpus versionné de **34 charges** (17 directes, 17 indirectes) | **prouvé** | intégrité (schéma, unicité des id, chaque signature reconnaît sa charge) contrôlée par `self-test.mjs` |
-| `oracles/self-test.mjs` — rejeu intégral à double sens (vert doit passer, rouge doit échouer *pour la bonne raison*) | **prouvé** | 48/48 PASS à la dernière exécution connue (rejouer avant de faire confiance) |
+| `oracles/oracle-scan-workflow-agent.mjs` — scan **statique** des workflows GitHub Actions qui lancent un agent (TF-2002) | **prouvé** | 11 fixtures (`fixtures/workflow-agent/`), dont 3 vertes tirées de la documentation ou voisines légitimes, rejouées par `self-test.mjs` avec chaque remède |
+| `oracles/self-test.mjs` — rejeu intégral à double sens (vert doit passer, rouge doit échouer *pour la bonne raison*) | **prouvé** | 76/76 PASS à la dernière exécution connue, le 29/10/2026 (rejouer avant de faire confiance) |
 
 « Prouvé » signifie : chaque règle a une fixture verte qui passe et une fixture rouge
 voisine qui échoue pour la raison attendue (code `regle` vérifié, pas seulement le verdict
@@ -141,7 +142,38 @@ ou journal sans ligne exploitable → `SKIP` motivé. **Jamais de PASS par défa
 Rattachement des règles au **OWASP Top 10 for LLM Applications (2025)**, et déclaration
 nominale des catégories non couvertes : `references/mapping-owasp-llm.md`.
 
-### Contrat de sortie (les trois oracles)
+### `oracle-scan-workflow-agent.mjs` — un agent lancé par un workflow GitHub Actions (TF-2002)
+
+Un produit du poste lance `anthropics/claude-code-action` depuis un workflow (mesure du pilot du
+28/10/2026). Avant cet oracle, aucune règle de la forge ne disait qui peut déclencher cet agent, quels
+secrets son shell lit, ni quel texte devient sa consigne. Agents reconnus : `claude-code-action`, Claude Code
+et Copilot en ligne de commande (`claude -p`, `copilot -p`), le job `copilot-setup-steps` de l'agent Copilot.
+
+| Règle | Détecte |
+|---|---|
+| `WA-1` | déclencheur ouvert aux tiers : `allowed_non_write_users` (bloquant s'il vaut `*`) ou `allowed_bots: '*'` lèvent le contrôle d'écriture de l'action ; un agent en ligne de commande lancé par une issue, un commentaire ou une pull request sans filtre sur `author_association` |
+| `WA-2` | texte d'un tiers (`github.event.<…>.body`, `.title`, `github.head_ref`…) interpolé dans la consigne de l'agent (`prompt`), ou dans sa ligne de commande (bloquant : injection dans le shell en plus) |
+| `WA-3` | secret autre que ceux de l'agent posé dans l'environnement que son shell lit (env du workflow, du job, de l'étape) ; `show_full_output: true`, qui recopie tout au journal |
+| `WA-4` | sous `pull_request_target` ou `workflow_run`, la tête de la pull request extraite à la racine de l'espace de travail avant l'agent |
+| `WA-5` | permissions de l'agent contournées (`--dangerously-skip-permissions`, mode `bypassPermissions`) ; shell libre ou réseau accordés sur un déclencheur de tiers |
+| `WA-6` | *(info)* `id-token: write` sur le job de l'agent : requis par l'action, à confronter aux confiances fédérées du cloud |
+| `WA-7` | job `copilot-setup-steps` avec une permission d'écriture |
+
+Chaque constat porte la page qui le fonde (`source`), et la sortie liste les pages lues le 29/10/2026
+(référentiel daté `oracles/data/referentiel-workflow-agent.json`). Un fichier que le lecteur YAML refuse
+(ancre, alias) rend FAIL, jamais un PASS silencieux. Le lecteur est une copie de celui de forge-websec
+(`oracles/lib-yaml.mjs`).
+
+```
+node oracles/oracle-scan-workflow-agent.mjs <dépôt | dossier de workflows | fichier.yml> [--json-only]
+```
+
+**Ce qui n'est pas jugé :** les agents de Copilot réglés dans les réglages du compte (seul
+`copilot-setup-steps` se lit) ; les permissions du jeton, l'épinglage par SHA et l'injection dans un `run:`
+sans agent (WF-1 à WF-4 de forge-websec) ; la configuration MCP passée par `--mcp-config` ; un secret écrit
+dans un fichier par une étape antérieure ; la confiance fédérée côté cloud.
+
+### Contrat de sortie (les oracles)
 
 ```json
 { "oracle": "...", "version": "0.1.0", "artefact": "...", "verdict": "PASS|FAIL|SKIP|donnees_insuffisantes",
@@ -151,6 +183,8 @@ nominale des catégories non couvertes : `references/mapping-owasp-llm.md`.
 
 `oracle-corpus-injection.mjs` ajoute un champ `domaine`
 (`securite-agentique/injection-de-prompt`) entre `version` et `artefact`.
+`oracle-scan-workflow-agent.mjs` ajoute `domaine` (`securite-agentique/agent-dans-un-workflow`), un champ
+`source` par constat et un tableau `sources` (page, date de lecture).
 
 Exit `0` = PASS, `1` = FAIL, `2` = SKIP / `donnees_insuffisantes`.
 
@@ -160,12 +194,12 @@ Exit `0` = PASS, `1` = FAIL, `2` = SKIP / `donnees_insuffisantes`.
 node oracles/self-test.mjs
 ```
 
-Sortie attendue : `48 PASS, 0 FAIL`. À rejouer après toute modification d'une règle, d'une
+Sortie attendue : `76 PASS, 0 FAIL` (mesuré le 29/10/2026). À rejouer après toute modification d'une règle, d'une
 fixture ou du corpus — un `✓` sans self-test rejoué n'est pas un `✓`.
 
 ## Limites explicites (ce que la v0 n'est pas)
 
-- **Pas de sandbox d'exécution.** Aucun des trois oracles n'exécute l'agent scanné ni les
+- **Pas de sandbox d'exécution.** Aucun oracle de la forge n'exécute l'agent scanné ni les
   commandes du journal — analyse texte/structure uniquement. Un agent qui obfusque au-delà
   des motifs lexicaux couverts (encodages autres que base64, indirection via variable,
   commande construite dynamiquement) n'est pas détecté.
@@ -195,7 +229,7 @@ fixture ou du corpus — un `✓` sans self-test rejoué n'est pas un `✓`.
   sont couverts par **aucune** règle ; LLM03 l'est marginalement ; **LLM10 est couverte
   partiellement** depuis TF-0207 (`TC-6..8`) — versant appels d'outils seulement, ni jetons
   ni coût ni durée. Détail nominal et motifs :
-  `references/mapping-owasp-llm.md` §2. Un run vert sur les trois oracles n'a rien dit de
+  `references/mapping-owasp-llm.md` §2. Un run vert sur tous les oracles n'a rien dit de
   ces risques.
 - **Pas de scan runtime branché sur le harnais** (interception en direct des appels d'outils
   pendant un run) — reste explicite, jamais promis au catalogue ci-dessus.
@@ -211,14 +245,18 @@ oracles/
   oracle-scan-agentdef.mjs     scan statique agent.def / subagent compilé
   oracle-scan-toolcalls.mjs    scan dynamique journal JSONL d'appels d'outils
   oracle-corpus-injection.mjs  rejeu du corpus d'injections de prompt (LLM01)
+  oracle-scan-workflow-agent.mjs  agent lancé par un workflow GitHub Actions (TF-2002)
+  lib-yaml.mjs                 lecteur YAML natif, copie de celui de forge-websec (pas un oracle)
   self-test.mjs                rejeu intégral à double sens
   data/referentiel-outils.json catalogue fermé des outils reconnus
+  data/referentiel-workflow-agent.json  actions et commandes d'agent, pages lues le 29/10/2026
 corpus/
   injection-prompt.jsonl       34 charges d'injection (17 directes / 17 indirectes) — DONNÉE de test
 fixtures/
   agentdef/                    9 fixtures (vertes + rouges) pour oracle-scan-agentdef
   toolcalls/                   11 fixtures JSONL (vertes + rouges) + allowlist de domaines
   injection/                   8 fixtures pour oracle-corpus-injection, dont 2 voisins légitimes
+  workflow-agent/              11 workflows (3 verts, 8 rouges) pour oracle-scan-workflow-agent
 references/
   FORMAT-JOURNAL.md            schéma documenté du journal JSONL (champ `output` inclus)
   mapping-owasp-llm.md         règles CAP/TC/INJ → OWASP LLM Top 10 + trous déclarés

@@ -1,6 +1,6 @@
 # Mapping des règles de la forge → OWASP Top 10 for LLM Applications
 
-Rattache chaque règle **exécutée** de cette forge (`CAP-1..4`, `TC-1..8`, `INJ-1..3`) aux
+Rattache chaque règle **exécutée** de cette forge (`CAP-1..4`, `TC-1..8`, `INJ-1..3`, `WA-1..7`) aux
 catégories du **OWASP Top 10 for LLM Applications, édition 2025** (projet OWASP GenAI
 Security), puis **déclare nommément** ce qu'aucune règle ne couvre.
 
@@ -51,17 +51,24 @@ confonde la règle avec la catégorie entière.
 | `INJ-1` | `oracle-corpus-injection` | charge du corpus portée **en clair** par une définition d'agent | **LLM01** | LLM06 |
 | `INJ-2` | `oracle-corpus-injection` | charge (ou son marqueur) retrouvée dans l'entrée d'un outil d'**action** — traversée | **LLM01** | LLM02, LLM05, LLM06 |
 | `INJ-3` | `oracle-corpus-injection` | charge ingérée puis **non** réémise dans un acte — trace du comportement sain (info, jamais un défaut) | **LLM01** | — |
+| `WA-1` | `oracle-scan-workflow-agent` | agent d'un workflow que des tiers peuvent déclencher (contrôle d'écriture levé, ou absent sans filtre d'auteur) | **LLM06** | LLM01 |
+| `WA-2` | `oracle-scan-workflow-agent` | texte d'un tiers interpolé dans la consigne ou la ligne de commande de l'agent | **LLM01** | LLM06 |
+| `WA-3` | `oracle-scan-workflow-agent` | secret posé dans l'environnement que lit le shell de l'agent ; sortie complète recopiée au journal | **LLM02** | LLM06 |
+| `WA-4` | `oracle-scan-workflow-agent` | code d'une pull request extrait à la racine de l'espace de travail avant l'agent, sous les secrets du dépôt | **LLM01** | LLM02, LLM06 |
+| `WA-5` | `oracle-scan-workflow-agent` | permissions de l'agent contournées, ou shell libre et réseau sur un déclencheur de tiers | **LLM06** | LLM02 |
+| `WA-6` | `oracle-scan-workflow-agent` | `id-token: write` sur le job de l'agent (info, jamais un défaut) | **LLM06** | LLM02 |
+| `WA-7` | `oracle-scan-workflow-agent` | job de préparation de l'agent Copilot avec une permission d'écriture | **LLM06** | — |
 
 ### Lecture inverse — catégorie → règles
 
 | Catégorie | Règles qui la touchent | Niveau réel de couverture |
 |---|---|---|
-| **LLM01** Prompt Injection | CAP-4, TC-4, INJ-1, INJ-2, INJ-3 | **partielle, mesurée** — 34 charges du corpus rejouées sur artefact statique ; ni modèle vivant, ni reformulations hors corpus |
-| **LLM02** Sensitive Information Disclosure | TC-1, TC-3, CAP-1, CAP-4, TC-4, INJ-2 | **partielle** — chemins de secrets et sorties réseau observés ; aucune détection de secret **dans le contenu** transmis (regex de chemin, pas de classifieur de donnée) |
+| **LLM01** Prompt Injection | CAP-4, TC-4, INJ-1, INJ-2, INJ-3, WA-2, WA-4 | **partielle, mesurée** — 34 charges du corpus rejouées sur artefact statique ; ni modèle vivant, ni reformulations hors corpus ; WA-2 et WA-4 ferment deux voies d'entrée d'un workflow (consigne interpolée, code de pull request lu) |
+| **LLM02** Sensitive Information Disclosure | TC-1, TC-3, CAP-1, CAP-4, TC-4, INJ-2, WA-3 | **partielle** — chemins de secrets et sorties réseau observés ; secrets posés dans l'environnement d'un agent de workflow (WA-3) ; aucune détection de secret **dans le contenu** transmis (regex de chemin, pas de classifieur de donnée) |
 | **LLM03** Supply Chain | CAP-2 | **marginale** — référentiel d'outils fermé uniquement ; ni provenance de modèle, ni intégrité de dépendance, ni signature de plugin/MCP |
 | **LLM04** Data and Model Poisoning | TC-5 (effleuré), INJ-1 (effleuré) | **NON COUVERTE** — voir §2 |
 | **LLM05** Improper Output Handling | TC-1 (pipe vers interpréteur), INJ-2 | **marginale** — un seul puits aval couvert (le shell) ; aucun contrôle d'assainissement vers HTML, SQL, rendu markdown, navigateur |
-| **LLM06** Excessive Agency | CAP-1, CAP-2, CAP-3, TC-2, TC-5, INJ-2, TC-6/TC-8 (effleuré) | **la mieux couverte** — surface déclarée (statique) + périmètre observé (dynamique) ; reste hors champ : les actions à effet externe non journalisées |
+| **LLM06** Excessive Agency | CAP-1, CAP-2, CAP-3, TC-2, TC-5, INJ-2, TC-6/TC-8 (effleuré), WA-1, WA-5, WA-7 | **la mieux couverte** — surface déclarée (statique) + périmètre observé (dynamique) + agent de workflow (qui le déclenche, quels outils) ; reste hors champ : les actions à effet externe non journalisées |
 | **LLM07** System Prompt Leakage | TC-3 (effleuré), charges INJ-D-03/D-04 (tentatives) | **NON COUVERTE** — voir §2 |
 | **LLM08** Vector and Embedding Weaknesses | charge INJ-I-12 (tentative) | **NON COUVERTE** — voir §2 |
 | **LLM09** Misinformation | charges INJ-I-06/I-12/I-17 (tentatives) | **NON COUVERTE** — voir §2 |
@@ -72,7 +79,7 @@ confonde la règle avec la catégorie entière.
 ## 2. Catégories NON couvertes — déclaration nominale
 
 Aucune règle de cette forge ne rend de verdict sur les catégories suivantes. Un run qui
-passe les trois oracles au vert **n'a rien dit** de ces cinq risques.
+passe tous ses oracles au vert **n'a rien dit** de ces cinq risques.
 
 | Catégorie | Ce qui manque | Pourquoi, aujourd'hui |
 |---|---|---|

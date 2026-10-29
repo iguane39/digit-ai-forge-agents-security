@@ -1,0 +1,132 @@
+{
+  "_commentaire": "Référentiel daté d'oracle-scan-workflow-agent (TF-2002) : les actions et commandes qui lancent un agent dans un workflow GitHub Actions, les événements qu'un tiers déclenche, et les faits de documentation qui fondent les règles WA-1 à WA-7. Donnée volatile (loi n° 4) : une action renommée ou une option nouvelle se corrige ici.",
+  "format": "forge-agents-security/workflow-agent@1",
+  "verifie_le": "2026-10-29",
+  "actions_agent": [
+    { "motif": "^anthropics/claude-code-action@", "agent": "claude-code-action", "controle_ecriture_natif": true }
+  ],
+  "commandes_agent": [
+    { "motif": "(^|[\\s;&|(])(npx\\s+(-y\\s+)?@anthropic-ai/claude-code|claude)\\s+(-p|--print)\\b", "agent": "Claude Code en ligne de commande" },
+    { "motif": "(^|[\\s;&|(])(npx\\s+(-y\\s+)?@github/copilot|copilot)\\s+(-p|--prompt)\\b", "agent": "Copilot en ligne de commande" }
+  ],
+  "evenements_tiers": ["issue_comment", "issues", "pull_request_review_comment", "pull_request_review", "pull_request", "pull_request_target", "discussion", "discussion_comment"],
+  "secrets_de_l_agent": ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GITHUB_TOKEN"],
+  "entrees_de_consigne": ["prompt", "direct_prompt", "override_prompt", "custom_instructions"],
+  "contextes_non_fiables_fin": ["body", "default_branch", "email", "head_ref", "label", "message", "name", "page_name", "ref", "title"],
+  "sources": [
+    {
+      "regle": "WA-1",
+      "url": "https://github.com/anthropics/claude-code-action/blob/main/docs/security.md",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "The action can only be triggered by users with write access to the repository.",
+        "This is a significant security risk and should only be used for workflows with extremely limited permissions",
+        "Should be used with extreme caution as it bypasses the primary security mechanism of this action",
+        "If your workflow listens on those events and `allowed_bots` is set to `'*'`, any such App can invoke this action with a prompt it controls."
+      ]
+    },
+    {
+      "regle": "WA-1",
+      "url": "https://code.claude.com/docs/en/github-actions",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "Write access: on issue and pull request events, the triggering user must have write access to the repository. To allow specific users without write access, set allowed_non_write_users and pass your own github_token input."
+      ]
+    },
+    {
+      "regle": "WA-1",
+      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli-in-actions",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "Invoking Copilot CLI directly in workflow steps gives it broad access to your workflow environment.",
+        "copilot -p \"Use git show HEAD to summarize the changes in this commit\" -s --allow-tool='shell(git show:*)'"
+      ]
+    },
+    {
+      "regle": "WA-1",
+      "url": "https://docs.github.com/en/copilot/concepts/agent-capabilities/agent-powered-workflows-and-operations/copilot-cli-in-github-actions",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "Workflows that run on pull request events from forks are at higher risk of prompt injection."
+      ]
+    },
+    {
+      "regle": "WA-2",
+      "url": "https://docs.github.com/en/actions/concepts/security/script-injections",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "These contexts typically end with body, default_branch, email, head_ref, label, message, name, page_name, ref, and title.",
+        "Before the shell script is run, the expressions inside ${{ }} are evaluated and then substituted with the resulting values"
+      ]
+    },
+    {
+      "regle": "WA-2",
+      "url": "https://github.com/anthropics/claude-code-action/blob/main/docs/security.md",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "The action sanitizes content by stripping HTML comments, invisible characters, markdown image alt text, hidden HTML attributes, and HTML entities, but new bypass techniques may emerge."
+      ]
+    },
+    {
+      "regle": "WA-3",
+      "url": "https://github.com/anthropics/claude-code-action/blob/main/docs/security.md",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "When set, Claude does a best-effort scrub of Anthropic, cloud, and GitHub Actions secrets from subprocess environments.",
+        "This reduces but does not eliminate prompt injection risk"
+      ]
+    },
+    {
+      "regle": "WA-3",
+      "url": "https://github.com/anthropics/claude-code-action/blob/main/action.yml",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "Show full JSON output from Claude Code. WARNING: This outputs ALL Claude messages including tool execution results which (description de show_full_output, tronquée à la lecture)"
+      ]
+    },
+    {
+      "regle": "WA-4",
+      "url": "https://github.com/anthropics/claude-code-action/blob/main/docs/security.md",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "pull_request_target and workflow_run execute with the base repository's secrets.",
+        "Do not check out an untrusted ref into the workspace root before this action."
+      ]
+    },
+    {
+      "regle": "WA-5",
+      "url": "https://code.claude.com/docs/en/github-actions",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "For a plain-text prompt, Claude has no shell or GitHub API access until you grant the tools the prompt needs, with --allowedTools in claude_args or a permissions.allow rule in the settings input."
+      ]
+    },
+    {
+      "regle": "WA-6",
+      "url": "https://code.claude.com/docs/en/github-actions",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "id-token: write: required for the Claude Code GitHub Action's default GitHub App authentication"
+      ]
+    },
+    {
+      "regle": "WA-7",
+      "url": "https://docs.github.com/en/copilot/how-tos/use-copilot-agents/cloud-agent/customize-the-agent-environment",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "The job MUST be called copilot-setup-steps or it will not be picked up by Copilot.",
+        "Set the permissions to the lowest permissions possible needed for your steps.",
+        "Copilot will be given its own token for its operations."
+      ]
+    },
+    {
+      "regle": "contexte",
+      "url": "https://docs.github.com/en/copilot/concepts/agent-capabilities/about-agents/about-third-party-coding-agents",
+      "lu_le": "2026-10-29",
+      "citations": [
+        "Third-party coding agents are currently in public preview.",
+        "Coding agents are subject to the same security protections, mitigations, and limitations as Copilot."
+      ]
+    }
+  ]
+}

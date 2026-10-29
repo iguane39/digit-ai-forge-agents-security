@@ -1,0 +1,17 @@
+# Fixture ROUGE WA-1 (TF-2002) : allowed_non_write_users '*' lève le contrôle d'écriture de l'action.
+name: claude-pour-tous
+on:
+  issue_comment:
+    types: [created]
+jobs:
+  claude:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          allowed_non_write_users: "*"

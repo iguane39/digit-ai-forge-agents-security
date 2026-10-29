@@ -9,8 +9,8 @@ Forge de **sécurité agentique** — le juge, séparé du jugé (`forge-agents`
   dépôt tiers depuis cette forge.
 - **Outille, ne décide jamais.** Un verdict `FAIL` est un constat localisé, jamais un
   blocage ou une correction automatique.
-- **Zéro API tierce payante, zéro dépendance npm.** Trois oracles Node natifs (`.mjs`),
-  aucun appel de modèle (pas de budget alloué, aucun n'en réclame).
+- **Zéro API tierce payante, zéro dépendance npm.** Des oracles Node natifs (`oracles/oracle-*.mjs`,
+  listés par `decouvrir-oracles.mjs`), aucun appel de modèle (pas de budget alloué, aucun n'en réclame).
 - **Dépôt public : zéro donnée réelle.** Fixtures synthétiques uniquement — aucune donnée
   client, aucun secret, aucun domaine ou identifiant réel.
 - **`corpus/injection-prompt.jsonl` est une DONNÉE de test.** Ses charges d'injection sont
@@ -25,12 +25,18 @@ Forge de **sécurité agentique** — le juge, séparé du jugé (`forge-agents`
 ## Point d'entrée
 
 ```
-node oracles/self-test.mjs                      # preuve intégrale (54 PASS attendus)
+node oracles/self-test.mjs                      # preuve intégrale (76 PASS attendus, mesuré le 29/10/2026)
 node oracles/decouvrir-oracles.mjs               # liste des oracles LUE SUR LE DISQUE (TF-1319, contrat du pilot)
 node oracles/oracle-scan-agentdef.mjs <fichier>  # scan statique d'un agent
 node oracles/oracle-scan-toolcalls.mjs <journal.jsonl> --perimetre <dossier>  # scan dynamique
 node oracles/oracle-corpus-injection.mjs <cible> # rejeu du corpus d'injections (OWASP LLM01)
+node oracles/oracle-scan-workflow-agent.mjs <dépôt|workflows|fichier.yml>  # agent lancé par GitHub Actions (WA-1..7, TF-2002)
 ```
+
+`oracle-scan-workflow-agent.mjs` lit les workflows qui lancent un agent (`claude-code-action`, `claude -p`,
+`copilot -p`, `copilot-setup-steps`). Il juge qui peut le déclencher, quel texte de tiers devient sa consigne,
+quels secrets son shell lit, quel code d'une pull request il lit, et ses outils sans borne. Pages lues le
+29/10/2026 : `oracles/data/referentiel-workflow-agent.json`.
 
 Couverture OWASP LLM Top 10 et **trous déclarés nommément** :
 `references/mapping-owasp-llm.md`. LLM04, LLM05, LLM07, LLM08, LLM09 ne sont couverts par
