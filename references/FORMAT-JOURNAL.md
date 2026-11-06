@@ -23,6 +23,11 @@ La forge ne prescrit pas COMMENT ce journal est produit (hors périmètre v0, cf
 | `lot_index` | non (volumétrie) | rang de l'appel dans son lot, entier ≥ 1 — lu par `TC-6` |
 | `lot_total` | non (volumétrie) | **borne annoncée** du lot, entier ≥ 1 — lu par `TC-6` |
 
+Un fichier dont **aucune** ligne ne porte `tool` ni `input` n'est pas un journal d'appels d'outils
+(par exemple le journal du cycle de vie d'une mission, ci-dessous) : l'oracle rend `SKIP` « format
+inconnu » au lieu de juger sept lignes vides comme une boucle (TF-2247). Une ligne illisible garde son
+`FAIL` ; un journal qui mêle lignes d'appels et autres lignes reste jugé.
+
 ## `output` — pourquoi il change ce qui est mesurable
 
 Un journal sans `output` reste valide, mais **ne permet pas** de constater une injection

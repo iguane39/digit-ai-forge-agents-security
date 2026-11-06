@@ -156,6 +156,20 @@ function collecterChaines(obj, acc = []) {
 const lignes = fs.readFileSync(journalPath, "utf8").split(/\r?\n/).filter(Boolean);
 if (!lignes.length) { add("bloquant", "—", "journal vide", journalPath); sortir("FAIL", 1); }
 
+// Format inconnu (TF-2247) : un journal dont AUCUNE ligne ne porte `tool` ni `input` n'est pas un
+// journal d'appels d'outils (cycle de vie de jobs, journal applicatif...). Le juger comme tel fabrique
+// un TC-8 sur sept lignes « de même outil vide et d'entrée vide ». Une ligne illisible n'est pas un
+// format inconnu : elle garde son FAIL dit plus bas ; un journal qui mêle lignes d'appels et autres
+// lignes reste jugé.
+const portraitDeLigne = (l) => {
+  try { const e = JSON.parse(l); return e !== null && typeof e === "object" && ("tool" in e || "input" in e); }
+  catch { return null; }
+};
+if (lignes.every((l) => portraitDeLigne(l) === false)) {
+  add("info", "—", "format inconnu : aucune ligne du journal ne porte `tool` ni `input` — ce n'est pas un journal d'appels d'outils (format : references/FORMAT-JOURNAL.md) ; rien à juger, ni PASS ni FAIL", journalPath);
+  sortir("SKIP", 2);
+}
+
 const entrees = [];   // lignes exploitables, pour les règles TRANSVERSES (TC-6, TC-8)
 
 lignes.forEach((ligne, idx) => {

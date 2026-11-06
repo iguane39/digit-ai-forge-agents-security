@@ -165,6 +165,41 @@ const rt = (fichier, opts = {}) => runJson(ORACLE_TOOLCALLS, [
   const r = runJson(ORACLE_TOOLCALLS, [FX("toolcalls", "n-existe-pas.jsonl"), "--perimetre", PERIMETRE]);
   ok(r.verdict === "SKIP", `journal introuvable → SKIP (obtenu ${r.verdict})`);
 }
+// ── TF-2247 · un journal qui n'est pas un journal d'appels d'outils → SKIP « format inconnu » ──
+// Le fait (campagne du 06/11/2026) : le journal de cycle de vie des jobs (fixtures/arret-en-course) rendait
+// FAIL TC-8 « 7 appels d'entrée strictement identique », alors qu'aucune ligne n'est un appel d'outil.
+{
+  const cycleDeVie = FX("arret-en-course", "rouge-demarre-apres-arret.jsonl");
+  const r = runJson(ORACLE_TOOLCALLS, [cycleDeVie, "--perimetre", PERIMETRE]);
+  ok(r.verdict === "SKIP" && !aRegle(r, "TC-8") && (r.findings || []).some((f) => /format inconnu/.test(f.msg)),
+    `TF-2247 · ROUGE→VERT — journal de cycle de vie (lignes sans tool ni input) → SKIP « format inconnu », jamais FAIL TC-8 (obtenu ${r.verdict})`);
+  const tmpF = fs.mkdtempSync(path.join(os.tmpdir(), "forge-agents-security-tf2247-"));
+  try {
+    const lire = (f) => fs.readFileSync(FX("toolcalls", f), "utf8").split(/\r?\n/).filter(Boolean);
+    const jouerF = (nom, lignes) => {
+      const p = path.join(tmpF, nom);
+      fs.writeFileSync(p, lignes.join("\n") + "\n", "utf8");
+      return runJson(ORACLE_TOOLCALLS, [p, "--perimetre", PERIMETRE, "--domaines", DOMAINES]);
+    };
+    const etranger = fs.readFileSync(cycleDeVie, "utf8").split(/\r?\n/).filter(Boolean);
+    // LÉGITIME VOISIN · un vrai journal d'appels reste jugé : le SKIP n'est pas un laissez-passer.
+    const boucle = lire("rouge-boucle.jsonl");
+    const encore = jouerF("boucle-seule.jsonl", boucle);
+    ok(encore.verdict === "FAIL" && aRegle(encore, "TC-8"),
+      `TF-2247 · voisin légitime — rouge-boucle.jsonl (lignes avec tool et input) → toujours FAIL TC-8 (obtenu ${encore.verdict})`);
+    const sansInput = jouerF("tool-sans-input.jsonl", Array.from({ length: 6 }, () => JSON.stringify({ tool: "Bash" })));
+    ok(sansInput.verdict === "FAIL" && aRegle(sansInput, "TC-8"),
+      `TF-2247 · des lignes qui portent tool (sans input) sont des appels : jugées, FAIL TC-8 (obtenu ${sansInput.verdict})`);
+    // Fail-closed : une ligne illisible garde son FAIL dit, elle n'est pas un « format inconnu ».
+    const illisible = jouerF("etranger-illisible.jsonl", [...etranger, "{ pas du json"]);
+    ok(illisible.verdict === "FAIL" && !(illisible.findings || []).some((f) => /format inconnu/.test(f.msg)),
+      `TF-2247 · ligne illisible dans un journal étranger → FAIL dit (JSON invalide), jamais SKIP (obtenu ${illisible.verdict})`);
+    ok(jouerF("null-seul.jsonl", ["null", "7", "[]"]).verdict === "SKIP",
+      "TF-2247 · lignes JSON valides mais ni objets ni appels (null, nombre, tableau) → SKIP « format inconnu », sans planter");
+  } finally {
+    fs.rmSync(tmpF, { recursive: true, force: true });
+  }
+}
 
 console.log("\nSELF-TEST forge-agents-security — oracle-corpus-injection (rejeu du corpus LLM01)\n");
 
