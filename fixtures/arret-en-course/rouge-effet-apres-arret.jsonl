@@ -1,0 +1,6 @@
+{"seq":1,"ts":"2026-11-05T09:00:00.000Z","evenement":"job_autorise","mission":"mission-a","job":"job-long"}
+{"seq":2,"ts":"2026-11-05T09:00:00.100Z","evenement":"job_demarre","mission":"mission-a","job":"job-long"}
+{"seq":3,"ts":"2026-11-05T09:00:00.200Z","evenement":"job_effet","mission":"mission-a","job":"job-long","outil":"Write"}
+{"seq":4,"ts":"2026-11-05T09:00:00.400Z","evenement":"mission_arret","mission":"mission-a"}
+{"seq":5,"ts":"2026-11-05T09:00:00.600Z","evenement":"job_effet","mission":"mission-a","job":"job-long","outil":"Bash"}
+{"seq":6,"ts":"2026-11-05T09:00:00.700Z","evenement":"job_termine","mission":"mission-a","job":"job-long"}

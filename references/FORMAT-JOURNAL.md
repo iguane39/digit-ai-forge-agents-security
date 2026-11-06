@@ -93,6 +93,28 @@ champs `command`, `file_path` et `url` ci-dessus selon l'outil. `TC-6` et `TC-8`
 le contenu de `input` : elles ne regardent que le **nom de l'outil**, la **succession** des
 lignes et l'**égalité stricte** de deux entrées (signature canonique, clés triées).
 
+## Journal du cycle de vie d'une mission — `oracle-arret-en-course.mjs` (TF-2217)
+
+Un second journal JSONL, distinct du journal d'appels d'outils : une ligne = un événement du cycle de vie d'un
+job, produit par le harnais qui lance les jobs sous une mission et qui peut en déclencher l'arrêt d'urgence.
+
+```json
+{"seq":4,"ts":"2026-11-05T09:00:00.400Z","evenement":"mission_arret","mission":"mission-a"}
+{"seq":6,"ts":"2026-11-05T09:00:00.700Z","evenement":"job_demarre","mission":"mission-a","job":"job-prevu"}
+```
+
+| Champ | Obligatoire | Description |
+|---|---|---|
+| `seq` | **oui** | entier ≥ 1, unique dans le journal : l'**ordre logique** de la course, attribué par le harnais. Il prime sur l'ordre des lignes du fichier et sur `ts` |
+| `evenement` | **oui** | `mission_arret`, `job_autorise`, `job_demarre`, `job_effet`, `job_interrompu`, `job_termine`, `job_refuse` ; tout autre nom rend `donnees_insuffisantes` |
+| `mission` | **oui** | identifiant de la mission ; l'arrêt d'une mission ne juge que ses jobs |
+| `job` | oui, sauf `mission_arret` | identifiant du job |
+| `ts` | non (info) | horodatage ISO 8601 ; ne sert qu'à dire l'écart dans un message, jamais à ordonner |
+| `outil`, `raison` | non | précisions lues dans les messages (`job_effet`, `job_refuse`) |
+
+`job_refuse` dit que la porte de démarrage a refusé un job pour cause d'arrêt : c'est le comportement sain, tracé en
+info. Le journal doit porter au moins un `mission_arret` : sans lui, l'oracle rend `SKIP`.
+
 ## Ce que l'oracle ne vérifie pas
 
 - Un appel non journalisé par le harnais est invisible — l'oracle audite le journal, pas

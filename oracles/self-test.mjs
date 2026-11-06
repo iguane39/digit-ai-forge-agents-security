@@ -467,5 +467,77 @@ console.log("\nSELF-TEST forge-agents-security — oracle-scan-mcp-supabase (ser
     `référentiel mcp-supabase : chaque règle SB-1..5 a sa page, citée et lue le 29/10/2026 (${refS.sources.length} sources)`);
 }
 
+console.log("\nSELF-TEST forge-agents-security — oracle-arret-en-course (arrêt d'urgence rejoué en course, TF-2217)\n");
+
+// Le fait : un job autorisé avant l'arrêt de sa mission a démarré 0,3 s après lui ; aucun oracle ne rejouait
+// l'arrêt pendant une action en cours. L'oracle juge l'ordre LOGIQUE (`seq`) d'une course journalisée : aucune
+// fixture ne dépend d'un délai réel, et chaque contrôle ci-dessous le prouve en retirant ou en inversant `ts`.
+{
+  const ORACLE_AU = path.join(HERE, "oracle-arret-en-course.mjs");
+  const FXA = (f) => FX("arret-en-course", f);
+  const durs = (r) => (r.findings || []).filter((f) => f.sev === "bloquant" || f.sev === "majeur");
+  const regles = (r) => [...new Set(durs(r).map((f) => f.regle))].sort().join(",");
+  {
+    const r = runJson(ORACLE_AU, [FXA("vert-arret-honore.jsonl")]);
+    ok(r.verdict === "PASS" && durs(r).length === 0 && (r.findings || []).some((f) => f.regle === "AU-1" && f.sev === "info"),
+      `vert-arret-honore.jsonl (job en cours interrompu, démarrage refusé, mission voisine non arrêtée qui continue) → PASS, le refus dit en AU-1 info (obtenu ${r.verdict})`);
+  }
+  for (const [f, attendu, quoi] of [
+    ["rouge-demarre-apres-arret.jsonl", "AU-1", "job autorisé avant l'arrêt, démarré 0,3 s après lui"],
+    ["rouge-effet-apres-arret.jsonl", "AU-2", "job en cours qui écrit encore après l'arrêt"],
+    ["rouge-arret-sans-accuse.jsonl", "AU-3", "job en cours jamais interrompu alors que la mission continue de journaliser"],
+  ]) {
+    const r = runJson(ORACLE_AU, [FXA(f)]);
+    ok(r.verdict === "FAIL" && regles(r) === attendu, `${f} (${quoi}) → FAIL sur ${attendu} seul (obtenu ${r.verdict}, ${regles(r) || "aucun"})`);
+  }
+  const tmpA = fs.mkdtempSync(path.join(os.tmpdir(), "forge-agents-security-tf2217-"));
+  try {
+    const lire = (f) => fs.readFileSync(FXA(f), "utf8").split(/\r?\n/).filter(Boolean);
+    const poser = (nom, lignes) => { const p = path.join(tmpA, nom); fs.writeFileSync(p, lignes.join("\n") + "\n", "utf8"); return p; };
+    const jouer = (nom, lignes) => runJson(ORACLE_AU, [poser(nom, lignes)]);
+    const sansTs = (l) => JSON.stringify((({ ts, ...reste }) => reste)(JSON.parse(l)));
+    const rouge = lire("rouge-demarre-apres-arret.jsonl");
+    const vert = lire("vert-arret-honore.jsonl");
+
+    // La course ne dépend d'aucun délai : sans `ts`, avec des `ts` inversés, dans le désordre du fichier, même verdict.
+    ok(regles(jouer("sans-ts.jsonl", rouge.map(sansTs))) === "AU-1", "rouge sans aucun ts → FAIL sur AU-1 : l'ordre est celui de seq, aucun délai n'est mesuré");
+    const inverse = rouge.map((l) => { const e = JSON.parse(l); e.ts = new Date(Date.parse("2026-11-05T10:00:00Z") - e.seq * 1000).toISOString(); return JSON.stringify(e); });
+    ok(regles(jouer("ts-inverses.jsonl", inverse)) === "AU-1", "rouge dont les ts disent le contraire de seq → FAIL sur AU-1 : seq prime sur l'horloge");
+    ok(regles(jouer("rouge-desordre.jsonl", [...rouge].reverse())) === "AU-1", "rouge écrit dans le désordre du fichier → FAIL sur AU-1 : l'ordre des lignes ne compte pas");
+    ok(jouer("vert-desordre.jsonl", [...vert].reverse()).verdict === "PASS", "vert écrit dans le désordre du fichier → PASS");
+    const a = JSON.stringify(runJson(ORACLE_AU, [FXA("rouge-demarre-apres-arret.jsonl")]));
+    const b = JSON.stringify(runJson(ORACLE_AU, [FXA("rouge-demarre-apres-arret.jsonl")]));
+    ok(a === b, "deux rejeux du rouge donnent un résultat identique octet pour octet : course déterministe");
+
+    // L'isolement par mission se prouve des deux côtés : le même démarrage dans la mission arrêtée est un défaut.
+    const voisinDansLaMission = vert.map((l) => l.replace('"mission-b"', '"mission-a"'));
+    ok(regles(jouer("voisin-meme-mission.jsonl", voisinDansLaMission)) === "AU-1,AU-2",
+      "le job de la mission voisine, replacé dans la mission arrêtée → FAIL sur AU-1 (démarrage) et AU-2 (son effet) : le vert ne passait que par l'isolement des missions");
+
+    // TF-1013 : chaque remède que nomme un constat, joué, rend PASS.
+    const demarre = rouge.findIndex((l) => JSON.parse(l).evenement === "job_demarre" && JSON.parse(l).job === "job-prevu");
+    const remedeAU1 = rouge.filter((l, i) => i !== demarre + 1).map((l, i) => i === demarre ? JSON.stringify({ seq: 6, evenement: "job_refuse", mission: "mission-a", job: "job-prevu", raison: "mission arrêtée" }) : l);
+    ok(jouer("remede-au1.jsonl", remedeAU1).verdict === "PASS", "remède AU-1 joué : la porte refuse le démarrage (job_refuse) → PASS (TF-1013)");
+    const effetRouge = lire("rouge-effet-apres-arret.jsonl");
+    const remedeAU2 = effetRouge.map((l) => { const e = JSON.parse(l); return e.seq === 5 ? JSON.stringify({ seq: 5, evenement: "job_interrompu", mission: "mission-a", job: "job-long" }) : l; }).filter((l) => JSON.parse(l).evenement !== "job_termine");
+    ok(jouer("remede-au2.jsonl", remedeAU2).verdict === "PASS", "remède AU-2 joué : le job est interrompu avant tout nouvel effet (job_interrompu) → PASS (TF-1013)");
+    const sansAccuse = lire("rouge-arret-sans-accuse.jsonl");
+    const remedeAU3 = [...sansAccuse, JSON.stringify({ seq: 6, evenement: "job_interrompu", mission: "mission-a", job: "job-long" })];
+    ok(jouer("remede-au3.jsonl", remedeAU3).verdict === "PASS", "remède AU-3 joué : le job accuse l'arrêt (job_interrompu) → PASS (TF-1013)");
+
+    // Fail-closed : sans arrêt rejoué ou sans ordre exploitable, jamais PASS.
+    const sansArret = vert.filter((l) => JSON.parse(l).evenement !== "mission_arret");
+    ok(jouer("sans-arret.jsonl", sansArret).verdict === "SKIP", "journal sans mission_arret → SKIP : aucun arrêt rejoué, donc rien à juger, jamais PASS par défaut");
+    ok(jouer("sans-seq.jsonl", rouge.map((l, i) => i === 2 ? sansTs(l).replace(/"seq":\d+,?/, "") : l)).verdict === "donnees_insuffisantes", "une ligne sans seq → donnees_insuffisantes : l'ordre d'une course ne se devine pas");
+    ok(jouer("seq-double.jsonl", rouge.map((l, i) => i === 3 ? l.replace('"seq":4', '"seq":3') : l)).verdict === "donnees_insuffisantes", "deux lignes de même seq → donnees_insuffisantes");
+    ok(jouer("evenement-inconnu.jsonl", rouge.map((l, i) => i === 5 ? l.replace("job_demarre", "job_demarré") : l)).verdict === "donnees_insuffisantes", "evenement inconnu (faute de frappe) → donnees_insuffisantes, jamais ignoré en silence");
+    ok(jouer("json-casse.jsonl", [...rouge, "{ pas du json"]).verdict === "FAIL", "ligne illisible → FAIL dit, jamais un PASS silencieux");
+    ok(jouer("vide.jsonl", []).verdict === "FAIL", "journal vide → FAIL dit");
+  } finally {
+    fs.rmSync(tmpA, { recursive: true, force: true });
+  }
+  ok(runJson(ORACLE_AU, [FXA("n-existe-pas.jsonl")]).verdict === "SKIP", "journal introuvable → SKIP, jamais PASS");
+}
+
 console.log(`\nSelf-test forge-agents-security : ${pass} PASS, ${echec} FAIL`);
 process.exit(echec ? 1 : 0);
