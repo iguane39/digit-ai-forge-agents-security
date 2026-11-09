@@ -26,7 +26,8 @@ La forge ne prescrit pas COMMENT ce journal est produit (hors périmètre v0, cf
 Un fichier dont **aucune** ligne ne porte `tool` ni `input` n'est pas un journal d'appels d'outils
 (par exemple le journal du cycle de vie d'une mission, ci-dessous) : l'oracle rend `SKIP` « format
 inconnu » au lieu de juger sept lignes vides comme une boucle (TF-2247). Une ligne illisible garde son
-`FAIL` ; un journal qui mêle lignes d'appels et autres lignes reste jugé.
+`FAIL` ; un journal qui mêle lignes d'appels et autres lignes reste jugé. Une ligne JSON valide qui
+n'est pas un objet (`null`, nombre, chaîne, tableau) est ignorée, sans plantage (TF-2290).
 
 ## `output` — pourquoi il change ce qui est mesurable
 

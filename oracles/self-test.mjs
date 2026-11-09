@@ -196,6 +196,15 @@ const rt = (fichier, opts = {}) => runJson(ORACLE_TOOLCALLS, [
       `TF-2247 · ligne illisible dans un journal étranger → FAIL dit (JSON invalide), jamais SKIP (obtenu ${illisible.verdict})`);
     ok(jouerF("null-seul.jsonl", ["null", "7", "[]"]).verdict === "SKIP",
       "TF-2247 · lignes JSON valides mais ni objets ni appels (null, nombre, tableau) → SKIP « format inconnu », sans planter");
+    // TF-2290 · ROUGE→VERT — une ligne `null` (ou nombre, chaîne, tableau) au MILIEU d'un journal qui porte des
+    // appels : elle est ignorée, les appels restent jugés. Avant le correctif, `e.tool` sur null plantait l'oracle.
+    const sixBash = Array.from({ length: 6 }, () => JSON.stringify({ tool: "Bash", input: { command: "ls" } }));
+    const mixteRouge = jouerF("mixte-null-boucle.jsonl", [sixBash[0], "null", ...sixBash.slice(1), "7", "\"texte\"", "[]"]);
+    ok(mixteRouge.verdict === "FAIL" && aRegle(mixteRouge, "TC-8"),
+      `TF-2290 · ROUGE→VERT — journal mixte (null, nombre, chaîne, tableau entre des appels) → lignes ignorées, boucle jugée FAIL TC-8, pas de plantage (obtenu ${mixteRouge.verdict})`);
+    const mixteVert = jouerF("mixte-null-sain.jsonl", ["null", JSON.stringify({ tool: "Read", input: { file_path: "a.txt" } }), "null"]);
+    ok(mixteVert.verdict === "PASS",
+      `TF-2290 · voisin légitime — journal sain avec lignes null → PASS, les lignes non objets ne fabriquent aucun défaut (obtenu ${mixteVert.verdict})`);
   } finally {
     fs.rmSync(tmpF, { recursive: true, force: true });
   }

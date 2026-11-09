@@ -176,12 +176,15 @@ lignes.forEach((ligne, idx) => {
   const num = idx + 1;
   let e;
   try { e = JSON.parse(ligne); } catch { add("bloquant", "—", `ligne ${num} : JSON invalide`, `${journalPath}:${num}`); return; }
+  // TF-2290 : une ligne JSON valide qui n'est pas un objet (null, nombre, chaîne, tableau) n'est pas un appel ;
+  // l'ignorer évite le plantage `e.tool` sur null au milieu d'un journal qui porte des appels.
+  if (e === null || typeof e !== "object" || Array.isArray(e)) return;
   const tool = e.tool || "";
   const input = e.input || {};
   const command = input.command || "";
   const filePath = input.file_path || input.path || "";
   const url = input.url || "";
-  entrees.push({ num, tool, borne: borneDeclaree(e), sig: `${tool} ${canonique(input)}` });
+  entrees.push({ num, tool, borne: borneDeclaree(e), sig: `${tool}\0${canonique(input)}` });
 
   // ── TC-1 · exfiltration réseau ──────────────────────────────────────────
   if (/^(Bash|PowerShell)$/.test(tool) && /\b(curl|wget)\b/i.test(command)) {
