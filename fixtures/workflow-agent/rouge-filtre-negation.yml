@@ -1,0 +1,18 @@
+# Fixture ROUGE WA-1 (D-197 (c)) : le filtre d'auteur est une négation. « != 'OWNER' » laisse passer tout
+# le monde SAUF le propriétaire : le texte contient author_association et OWNER, le filtre fait l'inverse
+# de ce qu'il annonce.
+name: revue-sur-demande
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+jobs:
+  revue:
+    if: github.event.comment.author_association != 'OWNER'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: claude -p "Relis le dernier commit et résume-le" --allowedTools "Read,Bash(git show:*)"

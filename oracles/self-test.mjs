@@ -383,6 +383,21 @@ console.log("\nSELF-TEST forge-agents-security — oracle-scan-workflow-agent (a
     const r = runJson(ORACLE_WA, [FXW(f)]);
     ok(r.verdict === "PASS" && durs(r).length === 0, `${f} (voisin légitime : ${quoi}) → PASS (obtenu ${r.verdict})`);
   }
+  // D-197 (c) : le filtre d'auteur est LU, pas seulement repéré. Une négation, une disjonction ou un filtre sur le
+  // mauvais champ contient pourtant author_association et OWNER ; il ne restreint rien. Chaque rouge nomme sa forme.
+  for (const [f, forme, quoi] of [
+    ["rouge-filtre-negation.yml", /négation \(!= 'OWNER'\)/, "!= 'OWNER' laisse passer tout le monde sauf le propriétaire"],
+    ["rouge-filtre-disjonction.yml", /disjonction \(\|\|\) dont une branche ne porte pas le filtre/, "== 'OWNER' || body != '' annule le filtre"],
+    ["rouge-filtre-non-contains.yml", /négation \(!contains\)/, "!contains(fromJSON([membres]), …) réserve l'agent aux non-membres"],
+  ]) {
+    const r = runJson(ORACLE_WA, [FXW(f)]);
+    ok(r.verdict === "FAIL" && seul(r, "WA-1", "bloquant") && forme.test(durs(r)[0].msg) && !!durs(r)[0].source,
+      `${f} (${quoi}) → FAIL avec WA-1 bloquant, la forme nommée dans le constat (obtenu ${r.verdict}, ${durs(r).map((x) => x.regle).join(",") || "aucun"})`);
+  }
+  for (const [f, quoi] of [["vert-filtre-egalite.yml", "== 'OWNER' combiné par && à une autre condition"], ["vert-filtre-contains-et.yml", "contains(fromJSON([membres]), …) enveloppé dans ${{ }} et combiné par &&"]]) {
+    const r = runJson(ORACLE_WA, [FXW(f)]);
+    ok(r.verdict === "PASS" && durs(r).length === 0, `${f} (témoin vert : ${quoi}) → PASS (obtenu ${r.verdict})`);
+  }
   // TF-1013 : chaque remède que nomme un constat, joué, rend PASS. Les fixtures peuvent être en CRLF (extraction
   // Windows) : les remplacements tolèrent les deux fins de ligne.
   const tmpW = fs.mkdtempSync(path.join(os.tmpdir(), "forge-agents-security-tf2002-"));
@@ -411,6 +426,49 @@ console.log("\nSELF-TEST forge-agents-security — oracle-scan-workflow-agent (a
     const rDepot = runJson(ORACLE_WA, [depot]);
     ok(rDepot.verdict === "FAIL" && durs(rDepot).length === 1 && /claude\.yml/.test(durs(rDepot)[0].where),
       `dépôt entier (.github/workflows, 2 fichiers) → FAIL, le seul constat localisé dans claude.yml (obtenu ${rDepot.verdict})`);
+    // D-197 (c) · TF-1013 : le remède que nomme chaque constat de filtre, joué, rend PASS.
+    const rNeg = remede("rouge-filtre-negation.yml", "remede-negation.yml", (t) => t.replace(/^(\s+if: .*) != 'OWNER'/m, "$1 == 'OWNER'"));
+    ok(rNeg.verdict === "PASS", `remède WA-1 joué : la négation devient une égalité → PASS (TF-1013 ; obtenu ${rNeg.verdict})`);
+    const rDisj = remede("rouge-filtre-disjonction.yml", "remede-disjonction.yml", (t) => t.replace("|| github.event.comment.body", "&& github.event.comment.body"));
+    ok(rDisj.verdict === "PASS", `remède WA-1 joué : la disjonction devient une conjonction → PASS (TF-1013 ; obtenu ${rDisj.verdict})`);
+    const rNonC = remede("rouge-filtre-non-contains.yml", "remede-non-contains.yml", (t) => t.replace('if: "!contains(', 'if: "contains('));
+    ok(rNonC.verdict === "PASS", `remède WA-1 joué : le ! devant contains(…) est retiré → PASS (TF-1013 ; obtenu ${rNonC.verdict})`);
+    // Formes du filtre d'auteur, une par une, sur un workflow minimal : l'expression au job ou à l'étape, le
+    // déclencheur au choix. « motif » est la forme que le constat doit nommer ; null = PASS attendu.
+    const AUT = "github.event.comment.author_association";
+    const LISTE = (...v) => `contains(fromJSON('${JSON.stringify(v)}'), ${AUT})`;
+    const ecrire = (expr, { on = "issue_comment", etape = false } = {}) => {
+      const p = path.join(tmpW, `forme-${fs.readdirSync(tmpW).length}.yml`);
+      const gate = `if: ${JSON.stringify(expr)}`;
+      fs.writeFileSync(p, `on: [${on}]\njobs:\n  revue:\n${etape ? "" : `    ${gate}\n`}    runs-on: ubuntu-latest\n    steps:\n      - ${etape ? `${gate}\n        ` : ""}run: claude -p "Relis le dernier commit"\n`, "utf8");
+      return runJson(ORACLE_WA, [p]);
+    };
+    for (const [expr, motif, quoi, opt] of [
+      [`${AUT} == 'MEMBER'`, null, "égalité avec MEMBER"],
+      [`${AUT} == 'owner'`, null, "égalité, casse ignorée comme le fait GitHub"],
+      [`'COLLABORATOR' == ${AUT}`, null, "littéral à gauche de l'égalité"],
+      [`${AUT} == 'OWNER' || ${AUT} == 'MEMBER' || ${AUT} == 'COLLABORATOR'`, null, "disjonction dont chaque branche porte le filtre"],
+      [`!(${AUT} != 'OWNER')`, null, "double négation = égalité"],
+      [`contains(github.event.comment.body, '@revue') && (${AUT} == 'OWNER' || ${AUT} == 'MEMBER')`, null, "&& avec une autre condition et un groupe de membres"],
+      [`${AUT} == 'OWNER'`, null, "filtre posé sur l'étape et non sur le job", { etape: true }],
+      [`${AUT} == 'OWNER'`, null, "issue_comment + issues : le champ du commentaire est absent d'une issue, le filtre ferme", { on: "issues, issue_comment" }],
+      [`${AUT} == 'NONE'`, /valeur hors des membres/, "== 'NONE' réserve l'agent aux inconnus"],
+      [`${AUT} != 'NONE'`, /négation \(!= 'NONE'\)/, "!= 'NONE' laisse passer les contributeurs"],
+      [`!(${AUT} == 'OWNER')`, /négation \(!/, "négation d'une égalité"],
+      [LISTE("OWNER", "CONTRIBUTOR"), /liste élargie/, "liste qui ajoute CONTRIBUTOR"],
+      [`contains('OWNER MEMBER COLLABORATOR', ${AUT})`, /forme non reconnue/, "contains sur une chaîne : vrai pour un champ vide"],
+      [`${AUT} == 'OWNER' || github.actor == 'un-robot'`, /disjonction \(\|\|\) dont une branche ne porte pas le filtre/, "branche sans filtre"],
+      [`${AUT} == 'OWNER' || ${AUT} != 'MEMBER'`, /disjonction/, "branche en négation"],
+      ["github.event.issue.author_association == 'OWNER'", /champ qui n'est pas l'auteur du déclencheur/, "auteur de l'issue, non celui du commentaire"],
+      ["github.event.issue.author_association == 'OWNER'", /champ qui n'est pas l'auteur du déclencheur/, "champ de l'issue valable pour issues mais faux pour issue_comment", { on: "issues, issue_comment" }],
+      ["github.event.sender.author_association == 'OWNER'", /champ qui n'est pas l'auteur du déclencheur/, "champ inventé"],
+      ["contains(github.event.comment.body, '@revue')", /sans filtre sur author_association/, "aucun filtre"],
+      [`${AUT} != 'OWNER'`, /négation \(!= 'OWNER'\)/, "négation posée sur l'étape", { etape: true }],
+    ]) {
+      const r = ecrire(expr, opt);
+      const bon = motif === null ? r.verdict === "PASS" && durs(r).length === 0 : r.verdict === "FAIL" && seul(r, "WA-1", "bloquant") && motif.test(durs(r)[0].msg);
+      ok(bon, `forme du filtre d'auteur : ${quoi} → ${motif === null ? "PASS" : `FAIL, constat « ${motif.source} »`} (obtenu ${r.verdict}${durs(r)[0] ? `, ${durs(r)[0].msg.slice(0, 70)}` : ""})`);
+    }
     const sansAgent = path.join(tmpW, "ci.yml");
     fs.writeFileSync(sansAgent, "on: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npm test\n", "utf8");
     ok(runJson(ORACLE_WA, [sansAgent]).verdict === "SKIP", "workflow sans agent → SKIP, rien à juger");

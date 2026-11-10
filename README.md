@@ -65,7 +65,7 @@ Le catalogue consolidé des dix forges vit chez le pilot :
 | `oracles/oracle-scan-workflow-agent.mjs` — scan **statique** des workflows GitHub Actions qui lancent un agent (TF-2002) | **prouvé** | 11 fixtures (`fixtures/workflow-agent/`), dont 3 vertes tirées de la documentation ou voisines légitimes, rejouées par `self-test.mjs` avec chaque remède |
 | `oracles/oracle-scan-mcp-supabase.mjs` — scan **statique** des configurations qui donnent à un agent le serveur MCP de Supabase (TF-2009) | **prouvé** | 10 fixtures (`fixtures/mcp-supabase/`), dont 4 vertes, rejouées par `self-test.mjs` avec chaque remède |
 | `oracles/oracle-arret-en-course.mjs` — rejeu de l'**arrêt d'urgence d'une mission pendant une action en cours**, sur le journal du cycle de vie des jobs (TF-2217) | **prouvé** | 4 fixtures (`fixtures/arret-en-course/`), dont 1 verte, rejouées par `self-test.mjs` avec chaque remède, sans dépendre d'un délai réel |
-| `oracles/self-test.mjs` — rejeu intégral à double sens (vert doit passer, rouge doit échouer *pour la bonne raison*) | **prouvé** | 127/127 PASS à la dernière exécution connue, le 09/11/2026 (rejouer avant de faire confiance) |
+| `oracles/self-test.mjs` — rejeu intégral à double sens (vert doit passer, rouge doit échouer *pour la bonne raison*) | **prouvé** | 155/155 PASS à la dernière exécution connue, le 10/11/2026 (rejouer avant de faire confiance) |
 
 « Prouvé » signifie : chaque règle a une fixture verte qui passe et une fixture rouge
 voisine qui échoue pour la raison attendue (code `regle` vérifié, pas seulement le verdict
@@ -168,7 +168,7 @@ et Copilot en ligne de commande (`claude -p`, `copilot -p`), le job `copilot-set
 
 | Règle | Détecte |
 |---|---|
-| `WA-1` | déclencheur ouvert aux tiers : `allowed_non_write_users` (bloquant s'il vaut `*`) ou `allowed_bots: '*'` lèvent le contrôle d'écriture de l'action ; un agent en ligne de commande lancé par une issue, un commentaire ou une pull request sans filtre sur `author_association` |
+| `WA-1` | déclencheur ouvert aux tiers : `allowed_non_write_users` (bloquant s'il vaut `*`) ou `allowed_bots: '*'` lèvent le contrôle d'écriture de l'action ; un agent en ligne de commande lancé par une issue, un commentaire ou une pull request sans filtre sur `author_association`. Depuis la 0.2.0 (D-197 (c)) le filtre est **lu**, non repéré : il n'est reconnu que s'il force l'auteur du déclencheur dans `OWNER`, `MEMBER` ou `COLLABORATOR` (égalité, ou `contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), <champ de l'auteur>)`, combinée par `&&` ; une disjonction exige le filtre sur chaque branche). Négation (`!=`, `!`, `!contains`), disjonction dont une branche ne porte pas le filtre, valeur ou liste hors des membres, champ qui n'est pas l'auteur du déclencheur (`github.event.issue.author_association` sur `issue_comment`) et forme non lue rendent FAIL, la forme nommée |
 | `WA-2` | texte d'un tiers (`github.event.<…>.body`, `.title`, `github.head_ref`…) interpolé dans la consigne de l'agent (`prompt`), ou dans sa ligne de commande (bloquant : injection dans le shell en plus) |
 | `WA-3` | secret autre que ceux de l'agent posé dans l'environnement que son shell lit (env du workflow, du job, de l'étape) ; `show_full_output: true`, qui recopie tout au journal |
 | `WA-4` | sous `pull_request_target` ou `workflow_run`, la tête de la pull request extraite à la racine de l'espace de travail avant l'agent |
@@ -284,7 +284,7 @@ Exit `0` = PASS, `1` = FAIL, `2` = SKIP / `donnees_insuffisantes`.
 node oracles/self-test.mjs
 ```
 
-Sortie attendue : `127 PASS, 0 FAIL` (mesuré le 09/11/2026). À rejouer après toute modification d'une règle, d'une
+Sortie attendue : `155 PASS, 0 FAIL` (mesuré le 10/11/2026). À rejouer après toute modification d'une règle, d'une
 fixture ou du corpus — un `✓` sans self-test rejoué n'est pas un `✓`.
 
 ## Limites explicites (ce que la v0 n'est pas)

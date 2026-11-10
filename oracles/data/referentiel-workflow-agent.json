@@ -10,6 +10,28 @@
     { "motif": "(^|[\\s;&|(])(npx\\s+(-y\\s+)?@github/copilot|copilot)\\s+(-p|--prompt)\\b", "agent": "Copilot en ligne de commande" }
   ],
   "evenements_tiers": ["issue_comment", "issues", "pull_request_review_comment", "pull_request_review", "pull_request", "pull_request_target", "discussion", "discussion_comment"],
+  "_auteur_commentaire": "D-197 (c), 10/11/2026 : pour chaque événement de tiers, le champ author_association qui porte l'AUTEUR DU DÉCLENCHEUR, et tous les champs author_association présents dans sa charge utile. Un filtre sur un autre champ présent (github.event.issue.author_association sur issue_comment : l'auteur de l'issue, non celui du commentaire) laisse passer n'importe quel commentateur. Table tenue d'après les charges utiles de webhook de GitHub ; NON relue en ligne le 10/11/2026 (aucune page citée dans sources) : à confronter à la page des événements de webhook avant de la tenir pour lue.",
+  "auteur_par_evenement": {
+    "issue_comment": "github.event.comment.author_association",
+    "issues": "github.event.issue.author_association",
+    "pull_request_review_comment": "github.event.comment.author_association",
+    "pull_request_review": "github.event.review.author_association",
+    "pull_request": "github.event.pull_request.author_association",
+    "pull_request_target": "github.event.pull_request.author_association",
+    "discussion": "github.event.discussion.author_association",
+    "discussion_comment": "github.event.comment.author_association"
+  },
+  "champs_author_association_par_evenement": {
+    "issue_comment": ["github.event.issue.author_association", "github.event.comment.author_association"],
+    "issues": ["github.event.issue.author_association"],
+    "pull_request_review_comment": ["github.event.pull_request.author_association", "github.event.comment.author_association"],
+    "pull_request_review": ["github.event.pull_request.author_association", "github.event.review.author_association"],
+    "pull_request": ["github.event.pull_request.author_association"],
+    "pull_request_target": ["github.event.pull_request.author_association"],
+    "discussion": ["github.event.discussion.author_association"],
+    "discussion_comment": ["github.event.discussion.author_association", "github.event.comment.author_association"]
+  },
+  "categories_de_membres": ["OWNER", "MEMBER", "COLLABORATOR"],
   "secrets_de_l_agent": ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GITHUB_TOKEN"],
   "entrees_de_consigne": ["prompt", "direct_prompt", "override_prompt", "custom_instructions"],
   "contextes_non_fiables_fin": ["body", "default_branch", "email", "head_ref", "label", "message", "name", "page_name", "ref", "title"],

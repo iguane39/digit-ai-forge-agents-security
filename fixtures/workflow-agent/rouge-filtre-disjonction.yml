@@ -1,0 +1,17 @@
+# Fixture ROUGE WA-1 (D-197 (c)) : le filtre d'auteur est une égalité correcte, mais une disjonction
+# l'annule. La seconde branche (« body != '' ») est vraie pour tout commentaire non vide, de n'importe qui.
+name: revue-sur-demande
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+jobs:
+  revue:
+    if: github.event.comment.author_association == 'OWNER' || github.event.comment.body != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: claude -p "Relis le dernier commit et résume-le" --allowedTools "Read,Bash(git show:*)"

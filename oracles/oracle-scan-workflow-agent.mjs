@@ -11,7 +11,10 @@
 // Sept règles sur les fichiers `.github/workflows/*.yml|*.yaml` d'un dépôt :
 //   WA-1  déclencheur ouvert aux tiers : contrôle d'écriture de claude-code-action levé
 //         (allowed_non_write_users, allowed_bots '*'), ou agent en ligne de commande lancé par un
-//         événement de tiers sans filtre sur author_association ;
+//         événement de tiers sans filtre sur author_association — le filtre est LU depuis la 0.2.0
+//         (D-197 (c)) : égalité ou contains(fromJSON([OWNER, MEMBER, COLLABORATOR]), champ de l'auteur),
+//         combinée par && ; une négation, une disjonction dont une branche ne porte pas le filtre ou un
+//         champ qui n'est pas l'auteur du déclencheur rendent FAIL, la forme nommée ;
 //   WA-2  texte d'un tiers (github.event.<…>.body, .title, github.head_ref…) interpolé dans la consigne
 //         de l'agent (prompt, direct_prompt…) ou dans sa ligne de commande ;
 //   WA-3  secret autre que ceux de l'agent posé dans l'environnement que son shell lit (env du
@@ -31,7 +34,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { lireYaml } from "./lib-yaml.mjs";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 const ORACLE = "oracle-scan-workflow-agent";
 const DOMAINE = "securite-agentique/agent-dans-un-workflow";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -45,6 +48,8 @@ const NON_JUGE = [
   "un fichier que le lecteur YAML refuse (ancre, alias, étiquette) : dit non jugé, verdict FAIL, jamais un PASS silencieux",
   "les actions et commandes d'agent absentes du référentiel (anthropics/claude-code-base-action, autres agents) : non reconnues, donc non jugées — le référentiel s'étend quand leur documentation est lue",
   "les options de Copilot en ligne de commande au-delà de -p et --allow-tool, que la page lue le 29/10/2026 ne décrit pas",
+  "le filtre d'auteur (WA-1) n'est lu que sur le `if:` du job et celui de l'étape de l'agent, dans les formes décrites ; une autre écriture (contains sur une chaîne, format(), fonction inconnue) rend FAIL « forme non reconnue », jamais PASS ; un job dont dépend l'agent par needs, ou une condition posée ailleurs, n'est pas suivi",
+  "la table des champs author_association par événement (référentiel, auteur_par_evenement) vient des charges utiles de webhook connues et n'a PAS été relue en ligne le 10/11/2026 : à confronter à la page des événements de webhook",
 ];
 
 const args = process.argv.slice(2);
@@ -102,7 +107,129 @@ function permissionsEcriture(p) {
   return Object.entries(p).filter(([, v]) => String(v).trim().toLowerCase() === "write").map(([k]) => k);
 }
 const idTokenEcriture = (p) => p === "write-all" || (estObjet(p) && String(p["id-token"] ?? "").trim().toLowerCase() === "write");
-const filtreAuteur = (cond) => /author_association/.test(texte(cond)) && /\b(OWNER|MEMBER|COLLABORATOR)\b/.test(texte(cond));
+
+// WA-1 · le filtre d'auteur est LU, pas repéré (D-197 (c), 10/11/2026). Avant : tout `if:` qui contenait
+// author_association et OWNER, MEMBER ou COLLABORATOR passait, sans lire l'opérateur — `!= 'OWNER'` (tous sauf le
+// propriétaire) et `== 'OWNER' || body != ''` (disjonction qui annule le filtre) rendaient PASS. Maintenant la condition
+// est analysée (&&, ||, !, parenthèses, égalité, contains(fromJSON([…]), champ)) et n'est reconnue que si, vraie, elle
+// force l'auteur du déclencheur dans OWNER, MEMBER ou COLLABORATOR : une conjonction restreint si UN terme restreint, une
+// disjonction si CHAQUE branche restreint, une négation ne restreint jamais (les lois de De Morgan s'appliquent).
+const MEMBRES = new Set((REF.categories_de_membres || ["OWNER", "MEMBER", "COLLABORATOR"]).map((v) => v.toUpperCase()));
+const AUTEUR_PAR_EVENEMENT = REF.auteur_par_evenement || {};
+const CHAMPS_PAR_EVENEMENT = REF.champs_author_association_par_evenement || {};
+const RE_CHAMP = /[A-Za-z0-9_.]*author_association/i;
+
+function lexer(s) {
+  const t = [];
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (/\s/.test(c)) { i++; continue; }
+    if (c === "'") {
+      let j = i + 1, v = "";
+      while (j < s.length && !(s[j] === "'" && s[j + 1] !== "'")) { if (s[j] === "'") { v += "'"; j += 2; } else v += s[j++]; }
+      if (j >= s.length) throw new Error("chaîne non fermée");
+      t.push({ k: "str", v, a: i, b: j + 1 }); i = j + 1; continue;
+    }
+    const deux = s.slice(i, i + 2);
+    if (deux === "&&") { t.push({ k: "and", a: i, b: i + 2 }); i += 2; continue; }
+    if (deux === "||") { t.push({ k: "or", a: i, b: i + 2 }); i += 2; continue; }
+    if (deux === "==" || deux === "!=") { t.push({ k: "op", v: deux, a: i, b: i + 2 }); i += 2; continue; }
+    if (c === "!") { t.push({ k: "not", a: i, b: i + 1 }); i++; continue; }
+    if (c === "(") { t.push({ k: "lp", a: i, b: i + 1 }); i++; continue; }
+    if (c === ")") { t.push({ k: "rp", a: i, b: i + 1 }); i++; continue; }
+    let j = i;
+    while (j < s.length && !/[\s'()!&|=]/.test(s[j])) j++;
+    if (j === i) j = i + 1;
+    t.push({ k: "mot", v: s.slice(i, j), a: i, b: j }); i = j;
+  }
+  return t;
+}
+// Arbre : {t:"or"|"and", xs}, {t:"not", x}, {t:"terme", toks, a, b}.
+function arbre(s) {
+  const t = lexer(s);
+  let p = 0;
+  const parseOu = () => { const xs = [parseEt()]; while (t[p]?.k === "or") { p++; xs.push(parseEt()); } return xs.length === 1 ? xs[0] : { t: "or", xs, a: xs[0].a, b: xs[xs.length - 1].b }; };
+  const parseEt = () => { const xs = [parseUnaire()]; while (t[p]?.k === "and") { p++; xs.push(parseUnaire()); } return xs.length === 1 ? xs[0] : { t: "and", xs, a: xs[0].a, b: xs[xs.length - 1].b }; };
+  const parseUnaire = () => {
+    if (t[p]?.k === "not") { const a = t[p++].a; const x = parseUnaire(); return { t: "not", x, a, b: x.b }; }
+    if (t[p]?.k === "lp") { p++; const x = parseOu(); if (t[p]?.k !== "rp") throw new Error("parenthèse non fermée"); p++; return x; }
+    const debut = p;
+    while (p < t.length && !["and", "or", "rp"].includes(t[p].k)) {
+      if (t[p].k === "lp") { let prof = 0; do { if (t[p].k === "lp") prof++; else if (t[p].k === "rp") prof--; p++; } while (prof > 0 && p < t.length); if (prof > 0) throw new Error("parenthèse non fermée"); }
+      else p++;
+    }
+    if (p === debut) throw new Error("terme vide");
+    return { t: "terme", toks: t.slice(debut, p), a: t[debut].a, b: t[p - 1].b };
+  };
+  const racine = parseOu();
+  if (p < t.length) throw new Error("parenthèse fermante en trop");
+  return racine;
+}
+// Le champ author_association cité doit être celui de l'AUTEUR du déclencheur, pour chaque événement de tiers du workflow
+// où il est présent : null = bon, sinon la forme fautive.
+function formeChamp(champ, tiers) {
+  const c = champ.toLowerCase();
+  const evts = tiers.filter((e) => AUTEUR_PAR_EVENEMENT[e]);
+  if (!evts.length) return null;
+  const attendus = [...new Set(evts.map((e) => AUTEUR_PAR_EVENEMENT[e]))].join(" ou ");
+  if (!evts.some((e) => AUTEUR_PAR_EVENEMENT[e].toLowerCase() === c))
+    return `champ qui n'est pas l'auteur du déclencheur (${champ} ; sur ${evts.join(", ")} l'auteur est ${attendus})`;
+  const faux = evts.filter((e) => AUTEUR_PAR_EVENEMENT[e].toLowerCase() !== c && (CHAMPS_PAR_EVENEMENT[e] || []).some((x) => x.toLowerCase() === c));
+  if (faux.length) return `champ qui n'est pas l'auteur du déclencheur sur ${faux.join(", ")} (${champ} y désigne un autre auteur que celui du déclencheur ; attendu : ${faux.map((e) => AUTEUR_PAR_EVENEMENT[e]).join(" ou ")})`;
+  return null;
+}
+const res = (ok, formes = [], sans = []) => ({ ok, formes, sans });
+function feuille(n, s, neg, tiers) {
+  const txt = s.slice(n.a, n.b);
+  if (!/author_association/i.test(txt)) return res(false, [], [txt]);
+  const inconnue = res(false, [`forme non reconnue (${txt.length > 70 ? `${txt.slice(0, 70)}…` : txt}) : ni égalité, ni contains(fromJSON([…]), champ)`]);
+  const ops = n.toks.filter((x) => x.k === "op");
+  if (ops.length === 1) {
+    const i = n.toks.indexOf(ops[0]);
+    const g = n.toks.slice(0, i), d = n.toks.slice(i + 1);
+    const [lit, expr] = g.length === 1 && g[0].k === "str" ? [g[0], d] : d.length === 1 && d[0].k === "str" ? [d[0], g] : [null, null];
+    if (!lit || expr.length !== 1 || expr[0].k !== "mot" || !RE_CHAMP.test(expr[0].v) || !expr[0].v.toLowerCase().endsWith("author_association")) return inconnue;
+    if ((ops[0].v === "==") === neg) return res(false, [neg ? `négation (! … == '${lit.v}') : la négation d'une égalité exclut cette catégorie et laisse passer toutes les autres` : `négation (!= '${lit.v}') : tout le monde passe sauf cette catégorie`]);
+    if (!MEMBRES.has(lit.v.toUpperCase())) return res(false, [`valeur hors des membres (== '${lit.v}') : l'égalité réserve l'agent à une autre catégorie que OWNER, MEMBER, COLLABORATOR`]);
+    const fc = formeChamp(expr[0].v, tiers);
+    return fc ? res(false, [fc]) : res(true);
+  }
+  const m = txt.match(/^contains\s*\(\s*fromJSON\s*\(\s*'((?:[^']|'')*)'\s*\)\s*,\s*([A-Za-z0-9_.]*author_association)\s*\)$/i);
+  if (!m) return inconnue;
+  if (neg) return res(false, ["négation (!contains) : la liste des membres niée réserve l'agent à tous ceux qui n'en sont pas"]);
+  let liste;
+  try { liste = JSON.parse(m[1].replace(/''/g, "'")); } catch { return inconnue; }
+  if (!Array.isArray(liste) || !liste.length || !liste.every((v) => typeof v === "string")) return inconnue;
+  const hors = liste.filter((v) => !MEMBRES.has(v.toUpperCase()));
+  if (hors.length) return res(false, [`liste élargie à des valeurs hors des membres (${hors.join(", ")}) : OWNER, MEMBER, COLLABORATOR seuls restreignent`]);
+  const fc = formeChamp(m[2], tiers);
+  return fc ? res(false, [fc]) : res(true);
+}
+function evaluer(n, s, neg, tiers) {
+  if (n.t === "not") return evaluer(n.x, s, !neg, tiers);
+  if (n.t === "terme") return feuille(n, s, neg, tiers);
+  const rs = n.xs.map((x) => evaluer(x, s, neg, tiers));
+  if ((n.t === "and") !== neg) {
+    const ok = rs.some((r) => r.ok);
+    return ok ? res(true) : res(false, rs.flatMap((r) => r.formes), rs.flatMap((r) => r.sans));
+  }
+  if (rs.every((r) => r.ok)) return res(true);
+  const formes = rs.flatMap((r) => r.formes);
+  if (rs.some((r) => r.ok)) {
+    const nu = n.xs.find((x, i) => !rs[i].ok);
+    formes.unshift(`disjonction (||) dont une branche ne porte pas le filtre (« ${s.slice(nu.a, nu.b).slice(0, 70)} ») : la branche seule suffit à lancer l'agent, le filtre ne restreint plus rien`);
+  }
+  return res(false, formes, rs.flatMap((r) => r.sans));
+}
+// {ok, formes} : ok si la condition, vraie, force l'auteur du déclencheur dans les membres.
+function lireFiltre(cond, tiers) {
+  let s = texte(cond).trim();
+  const enveloppe = s.match(/^\$\{\{([\s\S]*)\}\}$/);
+  if (enveloppe && !/\$\{\{|\}\}/.test(enveloppe[1])) s = enveloppe[1].trim();
+  try { const r = evaluer(arbre(s), s, false, tiers); return { ok: r.ok, formes: r.formes }; }
+  catch (e) { return /author_association/i.test(s) ? { ok: false, formes: [`forme non reconnue (expression illisible : ${e.message})`] } : { ok: false, formes: [] }; }
+}
 const secretsDe = (env) => [...texte(env).matchAll(RE_SECRET)].map((m) => m[1]);
 
 let agents = 0;
@@ -144,8 +271,14 @@ for (const f of fichiers) {
         if (nonEcrivains === "*") add("bloquant", "WA-1", `${qui} : allowed_non_write_users: '*' — tout compte, sans droit d'écriture, lance l'agent ; l'option « bypasses the primary security mechanism of this action » (TF-2002)`, ouEtape);
         else if (nonEcrivains) add("majeur", "WA-1", `${qui} : allowed_non_write_users (${nonEcrivains.slice(0, 60)}) lève le contrôle d'écriture de l'action — « a significant security risk and should only be used for workflows with extremely limited permissions » (TF-2002)`, ouEtape);
         if (texte(avec.allowed_bots).trim() === "*" && tiers.length) add("bloquant", "WA-1", `${qui} : allowed_bots: '*' sur ${tiers.join(", ")} — « any such App can invoke this action with a prompt it controls » (TF-2002)`, ouEtape);
-      } else if (tiers.length && !filtreAuteur(job.if) && !filtreAuteur(etape.if)) {
-        add("bloquant", "WA-1", `${qui} lancé par ${tiers.join(", ")} sans filtre sur author_association (OWNER, MEMBER, COLLABORATOR) : aucune vérification d'auteur, tout compte qui peut ouvrir une issue ou commenter lance l'agent avec les droits du job (TF-2002)`, ouEtape);
+      } else if (tiers.length) {
+        // Le `if:` du job et celui de l'étape sont deux portes en série : il suffit qu'une seule restreigne.
+        const filtres = [job.if, etape.if].filter((c) => c !== undefined && c !== null).map((c) => lireFiltre(c, tiers));
+        if (!filtres.some((f) => f.ok)) {
+          const formes = [...new Set(filtres.flatMap((f) => f.formes))];
+          if (!formes.length) add("bloquant", "WA-1", `${qui} lancé par ${tiers.join(", ")} sans filtre sur author_association (OWNER, MEMBER, COLLABORATOR) : aucune vérification d'auteur, tout compte qui peut ouvrir une issue ou commenter lance l'agent avec les droits du job (TF-2002)`, ouEtape);
+          else add("bloquant", "WA-1", `${qui} lancé par ${tiers.join(", ")} avec un filtre sur author_association qui ne restreint pas aux membres : ${formes.join(" ; ")} — le filtre n'est reconnu que s'il force l'auteur du déclencheur dans OWNER, MEMBER ou COLLABORATOR : une égalité (== 'OWNER') ou contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), <champ de l'auteur>), combinée par && au reste ; tout compte qui échappe au filtre lance l'agent avec les droits du job (D-197 (c))`, ouEtape);
+        }
       }
 
       // WA-2 · le texte d'un tiers devient la consigne.

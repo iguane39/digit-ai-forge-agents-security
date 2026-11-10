@@ -1,0 +1,17 @@
+# Fixture VERTE (D-197 (c)) : contains(fromJSON(…)) sur l'auteur du commentaire, combiné par && à une
+# autre condition, dans la forme enveloppée ${{ … }}. Doit rester verte.
+name: revue-sur-demande
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+jobs:
+  revue:
+    if: ${{ contains(github.event.comment.body, '@revue') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: claude -p "Relis le dernier commit et résume-le" --allowedTools "Read,Bash(git show:*)"
