@@ -61,6 +61,26 @@ console.log("SELF-TEST forge-agents-security — oracle-scan-agentdef (statique)
   const r = runJson(ORACLE_AGENTDEF, [FX("agentdef", "rouge-permissions-larges.yaml")]);
   ok(r.verdict === "FAIL" && aRegle(r, "CAP-3"), `rouge-permissions-larges.yaml (mandat lecture seule, outils Write/Edit) → FAIL avec CAP-3 (obtenu ${r.verdict})`);
 }
+// TF-2512 (14/11/2026) : un shell seul accordé à un mandat de lecture n'est plus qu'une note, comme CAP-1 depuis D-49 (a).
+const notesCap3 = (r) => (r.findings || []).filter((f) => f.regle === "CAP-3");
+{
+  const r = runJson(ORACLE_AGENTDEF, [FX("agentdef", "vert-lecture-shell-seul.yaml")]);
+  const n = notesCap3(r);
+  ok(r.verdict === "PASS" && n.length === 1 && n[0].sev === "mineur",
+    `vert-lecture-shell-seul.yaml (mandat de lecture, Read+Grep+Bash) → PASS avec une note CAP-3 « mineur » (obtenu ${r.verdict}, ${n.map((f) => f.sev).join(",") || "aucune note"})`);
+}
+{
+  const r = runJson(ORACLE_AGENTDEF, [FX("agentdef", "vert-compile-lecture-shell.md")]);
+  const n = notesCap3(r);
+  ok(r.verdict === "PASS" && n.length === 1 && n[0].sev === "mineur" && /Bash, PowerShell/.test(n[0].msg),
+    `vert-compile-lecture-shell.md (subagent compilé, mandat de lecture, Bash+PowerShell) → PASS avec une note CAP-3 « mineur » qui nomme les deux shells (obtenu ${r.verdict})`);
+}
+{
+  const r = runJson(ORACLE_AGENTDEF, [FX("agentdef", "rouge-lecture-shell-et-ecriture.yaml")]);
+  const g = notesCap3(r).filter((f) => f.sev === "majeur");
+  ok(r.verdict === "FAIL" && g.length === 1 && /\bEdit\b/.test(g[0].msg),
+    `rouge-lecture-shell-et-ecriture.yaml (mandat de lecture, Bash + Edit) → FAIL avec CAP-3 « majeur » qui nomme Edit : le shell ne lave pas l'écriture (obtenu ${r.verdict})`);
+}
 
 // ── CAP-4 · motif d'exfiltration/injection dans le texte ────────────────────
 {

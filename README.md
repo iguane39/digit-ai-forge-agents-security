@@ -58,14 +58,14 @@ Le catalogue consolidé des dix forges vit chez le pilot :
 
 | Service | Statut | Preuve |
 |---|---|---|
-| `oracles/oracle-scan-agentdef.mjs` — scan **statique** d'un agent.def ou d'un subagent compilé | **prouvé** | 9 fixtures (`fixtures/agentdef/`), rejouées par `self-test.mjs` |
+| `oracles/oracle-scan-agentdef.mjs` — scan **statique** d'un agent.def ou d'un subagent compilé | **prouvé** | 13 fixtures (`fixtures/agentdef/`), rejouées par `self-test.mjs` |
 | `oracles/oracle-scan-toolcalls.mjs` — scan **dynamique** d'un journal JSONL d'appels d'outils | **prouvé** | 18 fixtures JSONL dont 2 voisins légitimes (lot borné, boucle qui progresse) + 1 allowlist de domaines + 2 jeux de seuils (`fixtures/toolcalls/`), rejouées par `self-test.mjs` |
 | `oracles/oracle-corpus-injection.mjs` — rejeu du **corpus d'injections de prompt** contre une cible statique (définition d'agent ou journal) | **prouvé** | 8 fixtures (`fixtures/injection/`) dont 2 voisins légitimes, rejouées par `self-test.mjs` |
 | `corpus/injection-prompt.jsonl` — corpus versionné de **34 charges** (17 directes, 17 indirectes) | **prouvé** | intégrité (schéma, unicité des id, chaque signature reconnaît sa charge) contrôlée par `self-test.mjs` |
 | `oracles/oracle-scan-workflow-agent.mjs` — scan **statique** des workflows GitHub Actions qui lancent un agent (TF-2002) | **prouvé** | 11 fixtures (`fixtures/workflow-agent/`), dont 3 vertes tirées de la documentation ou voisines légitimes, rejouées par `self-test.mjs` avec chaque remède |
 | `oracles/oracle-scan-mcp-supabase.mjs` — scan **statique** des configurations qui donnent à un agent le serveur MCP de Supabase (TF-2009) | **prouvé** | 10 fixtures (`fixtures/mcp-supabase/`), dont 4 vertes, rejouées par `self-test.mjs` avec chaque remède |
 | `oracles/oracle-arret-en-course.mjs` — rejeu de l'**arrêt d'urgence d'une mission pendant une action en cours**, sur le journal du cycle de vie des jobs (TF-2217) | **prouvé** | 4 fixtures (`fixtures/arret-en-course/`), dont 1 verte, rejouées par `self-test.mjs` avec chaque remède, sans dépendre d'un délai réel |
-| `oracles/self-test.mjs` — rejeu intégral à double sens (vert doit passer, rouge doit échouer *pour la bonne raison*) | **prouvé** | 155/155 PASS à la dernière exécution connue, le 10/11/2026 (rejouer avant de faire confiance) |
+| `oracles/self-test.mjs` — rejeu intégral à double sens (vert doit passer, rouge doit échouer *pour la bonne raison*) | **prouvé** | 158/158 PASS à la dernière exécution connue, le 14/11/2026 (rejouer avant de faire confiance) |
 
 « Prouvé » signifie : chaque règle a une fixture verte qui passe et une fixture rouge
 voisine qui échoue pour la raison attendue (code `regle` vérifié, pas seulement le verdict
@@ -77,7 +77,7 @@ global). Un service sans cette preuve n'apparaîtrait pas ici.
 |---|---|
 | `CAP-1` | Combinaison de capacités dangereuse : un outil réseau déclaré (`WebFetch`, `WebSearch`) + écriture filesystem + lecture cumulés par le même agent (surface d'exfiltration complète — lire un secret, l'exfiltrer, couvrir ses traces). Depuis la 0.2.0 (D-49 (a) du 20/10/2026), un shell (`Bash`, `PowerShell`) sans outil réseau déclaré ne laisse qu'une note « mineur », non bloquante |
 | `CAP-2` | Outil déclaré absent du référentiel fermé (`oracles/data/referentiel-outils.json`) — supply-chain, typosquat, capacité hallucinée |
-| `CAP-3` | Permissions plus larges que le mandat déclaré (mandat de lecture/revue, outils d'écriture ou d'exécution accordés) |
+| `CAP-3` | Permissions plus larges que le mandat déclaré (mandat de lecture/revue, outils d'écriture, de délégation ou d'exécution accordés). Depuis la 0.3.0 (TF-2512, 14/11/2026), un shell (`Bash`, `PowerShell`) qui est le seul outil excédant la lecture ne laisse qu'une note « mineur », non bloquante, comme `CAP-1` depuis la 0.2.0 : rejouer une recette ou compter dans un registre, c'est lire par un shell. Un outil d'écriture (`Write`, `Edit`, `NotebookEdit`) ou `Agent` à côté du shell garde `CAP-3` « majeur » |
 | `CAP-4` | Motif d'instruction d'exfiltration ou d'injection dans le texte de l'agent (mandat, arbitre, corps du prompt compilé) |
 
 Formats lus : agent.def source (YAML, sous-ensemble documenté par `forge-agents`) et
@@ -284,7 +284,7 @@ Exit `0` = PASS, `1` = FAIL, `2` = SKIP / `donnees_insuffisantes`.
 node oracles/self-test.mjs
 ```
 
-Sortie attendue : `155 PASS, 0 FAIL` (mesuré le 10/11/2026). À rejouer après toute modification d'une règle, d'une
+Sortie attendue : `158 PASS, 0 FAIL` (mesuré le 14/11/2026). À rejouer après toute modification d'une règle, d'une
 fixture ou du corpus — un `✓` sans self-test rejoué n'est pas un `✓`.
 
 ## Limites explicites (ce que la v0 n'est pas)
@@ -346,7 +346,7 @@ oracles/
 corpus/
   injection-prompt.jsonl       34 charges d'injection (17 directes / 17 indirectes) — DONNÉE de test
 fixtures/
-  agentdef/                    9 fixtures (vertes + rouges) pour oracle-scan-agentdef
+  agentdef/                    13 fixtures (vertes + rouges) pour oracle-scan-agentdef
   toolcalls/                   11 fixtures JSONL (vertes + rouges) + allowlist de domaines
   injection/                   8 fixtures pour oracle-corpus-injection, dont 2 voisins légitimes
   workflow-agent/              11 workflows (3 verts, 8 rouges) pour oracle-scan-workflow-agent

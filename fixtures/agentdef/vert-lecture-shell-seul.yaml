@@ -1,0 +1,9 @@
+id: rejoue-recette
+mandat: "Audite la sortie de la recette du dépôt en lecture seule, en la rejouant, et signale les écarts"
+outils: [Read, Grep, Bash]
+arbitre:
+  - "Chaque écart cite la commande rejouée et la ligne de sortie concernée"
+entrees:
+  - { artefact: "recette.txt", de: "entrant humain" }
+sorties:
+  - { artefact: "ecarts.md", vers: "livrable-final" }

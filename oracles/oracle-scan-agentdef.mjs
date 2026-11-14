@@ -10,7 +10,7 @@
 //   CAP-2  outil déclaré absent du référentiel fermé (data/referentiel-outils.json) —
 //          supply-chain / typosquat / capacité hallucinée ;
 //   CAP-3  permissions plus larges que ne l'exige le mandat déclaré (mandat de lecture/revue
-//          mais outils d'écriture/exécution accordés) ;
+//          mais outils d'écriture/exécution accordés ; un shell seul n'est qu'une note depuis la 0.3.0) ;
 //   CAP-4  texte de l'agent (mandat + corps) contenant un motif d'instruction d'exfiltration
 //          ou d'injection ("envoie X vers http://...", "ignore les instructions...").
 //
@@ -23,10 +23,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 const ORACLE = "oracle-scan-agentdef";
 const NON_JUGE = [
   "capacité réseau IMPLICITE d'un shell (Bash, PowerShell) sans outil réseau déclaré : notée « mineur », jamais bloquante depuis la 0.2.0 (D-49 (a) du 20/10/2026)",
+  "capacité d'écriture ou d'exécution IMPLICITE d'un shell seul accordé à un mandat de lecture : notée « mineur » (CAP-3), jamais bloquante depuis la 0.3.0 (TF-2512, 14/11/2026) ; un outil d'écriture ou de délégation déclaré à côté reste bloquant",
   "exécution réelle de l'agent (v0 statique — ni sandbox ni interprétation du prompt par un modèle)",
   "analyse sémantique profonde du mandat au-delà de motifs lexicaux (heuristique, pas de compréhension)",
   "conformité du format à un substrat non Claude Code (façade queue git, etc.)",
@@ -181,9 +182,19 @@ for (const o of outilsAgent) {
 // ── CAP-3 · permissions plus larges que le mandat déclaré ────────────────────
 const MOTS_LECTURE_SEULE = /\b(audite|audit|revue|revoie|analyse|vérifie|verifie|contrôle|controle|évalue|evalue|inspecte|lecture seule|read[- ]only)\b/i;
 const OUTILS_AU_DELA_LECTURE = ["Write", "Edit", "NotebookEdit", "Bash", "PowerShell", "Agent"];
+// 0.3.0 (TF-2512, décision du 14/11/2026) — UN SHELL SEUL N'EST PLUS UN EXCÈS BLOQUANT POUR UN MANDAT DE LECTURE,
+// comme CAP-1 le tolère depuis la 0.2.0 : rejouer une recette, un oracle ou une commande native, compter ou croiser des
+// registres, c'est lire par un shell (TF-2512 : deux agents de la flotte du pilot, explorateur et verificateur, y étaient
+// refusés). Le seul outil excédant la lecture étant un shell (Bash, PowerShell), le constat est une note « mineur », non
+// bloquante ; dès qu'un outil d'écriture (Write, Edit, NotebookEdit) ou de délégation (Agent) l'accompagne, CAP-3 reste
+// « majeur », et nomme tous les outils en excès. La capacité d'écriture implicite du shell est dite, pas jugée (non_juge).
 if (MOTS_LECTURE_SEULE.test(def.mandat)) {
   const exces = outilsAgent.filter((o) => OUTILS_AU_DELA_LECTURE.includes(o));
-  if (exces.length)
+  if (exces.length && exces.every((o) => SHELLS.includes(o)))
+    add("mineur", "CAP-3",
+      `mandat de lecture/revue (« ${def.mandat.slice(0, 80)}${def.mandat.length > 80 ? "…" : ""} ») avec pour seul outil excédant la lecture un shell [${exces.join(", ")}] : sa capacité d'écriture implicite n'est pas jugée comme un excès de permission (TF-2512, comme CAP-1 depuis D-49 (a)) — note, non bloquante`,
+      "mandat/outils");
+  else if (exces.length)
     add("majeur", "CAP-3", `mandat de lecture/revue (« ${def.mandat.slice(0, 80)}${def.mandat.length > 80 ? "…" : ""} ») mais outils excédant la lecture accordés : [${exces.join(", ")}] — moindre capacité non respectée`, "mandat/outils");
 }
 
