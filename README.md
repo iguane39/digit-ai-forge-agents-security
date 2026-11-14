@@ -65,7 +65,8 @@ Le catalogue consolidé des dix forges vit chez le pilot :
 | `oracles/oracle-scan-workflow-agent.mjs` — scan **statique** des workflows GitHub Actions qui lancent un agent (TF-2002) | **prouvé** | 11 fixtures (`fixtures/workflow-agent/`), dont 3 vertes tirées de la documentation ou voisines légitimes, rejouées par `self-test.mjs` avec chaque remède |
 | `oracles/oracle-scan-mcp-supabase.mjs` — scan **statique** des configurations qui donnent à un agent le serveur MCP de Supabase (TF-2009) | **prouvé** | 10 fixtures (`fixtures/mcp-supabase/`), dont 4 vertes, rejouées par `self-test.mjs` avec chaque remède |
 | `oracles/oracle-arret-en-course.mjs` — rejeu de l'**arrêt d'urgence d'une mission pendant une action en cours**, sur le journal du cycle de vie des jobs (TF-2217) | **prouvé** | 4 fixtures (`fixtures/arret-en-course/`), dont 1 verte, rejouées par `self-test.mjs` avec chaque remède, sans dépendre d'un délai réel |
-| `oracles/self-test.mjs` — rejeu intégral à double sens (vert doit passer, rouge doit échouer *pour la bonne raison*) | **prouvé** | 158/158 PASS à la dernière exécution connue, le 14/11/2026 (rejouer avant de faire confiance) |
+| `oracles/oracle-pep-impact.mjs` — rejeu du **niveau de risque retenu par un PEP** contre le catalogue des types d'action : la déclaration de l'agent ne peut que le relever (TF-2422) | **prouvé** | 5 journaux et un catalogue (`fixtures/pep-impact/`), dont 1 vert, rejoués par `self-test.mjs` avec chaque remède, sans appel au produit |
+| `oracles/self-test.mjs` — rejeu intégral à double sens (vert doit passer, rouge doit échouer *pour la bonne raison*) | **prouvé** | 183/183 PASS à la dernière exécution connue, le 14/11/2026 (rejouer avant de faire confiance) |
 
 « Prouvé » signifie : chaque règle a une fixture verte qui passe et une fixture rouge
 voisine qui échoue pour la raison attendue (code `regle` vérifié, pas seulement le verdict
@@ -261,6 +262,39 @@ node oracles/oracle-arret-en-course.mjs <journal.jsonl> [--json-only]
 ni l'arrêt) ; la complétude du journal ; le délai réel entre l'arrêt et un démarrage ; l'exactitude de `seq` ; une
 autorisation délivrée après l'arrêt sans démarrage ; les effets que le harnais ne journalise pas.
 
+### `oracle-pep-impact.mjs` — le niveau de risque d'une action se tire du catalogue, jamais de l'agent (TF-2422)
+
+Le fait (retour d'un produit du poste, 10/11/2026) : le PEP d'une plateforme lisait l'impact dans la demande de l'agent.
+Une action déclarée « faible » sur un type « moyen » du catalogue recevait un ticket sans approbateur : le contrôle à deux
+personnes avait une faille depuis la première version du PEP, relevée par une revue de code. L'oracle rejoue la faille sur
+le journal des décisions d'un PEP (format : `references/FORMAT-JOURNAL.md`, section « Journal des décisions d'un PEP »),
+contre le catalogue du produit.
+
+| Règle | Détecte |
+|---|---|
+| `PI-1` | impact retenu inférieur à celui du catalogue : le PEP a cru la déclaration de l'agent (bloquant) |
+| `PI-2` | ticket émis sans approbateur alors que le niveau attendu, le plus élevé du catalogue et de la déclaration, atteint le seuil d'approbation (bloquant) |
+| `PI-3` | impact retenu inférieur à l'impact déclaré au-dessus du catalogue : la relève de l'agent est ignorée (majeur) |
+| `PI-4` | ticket émis pour un type absent du catalogue : une action inconnue se refuse (bloquant) |
+
+**Le catalogue est fourni, jamais deviné.** `--catalogue` porte l'échelle ordonnée des niveaux, le seuil d'approbation et le
+niveau de chaque type : ce sont ceux du produit, pas une convention de la forge. Sans lui, ou avec un niveau hors de
+l'échelle, le verdict est `donnees_insuffisantes`. **L'épreuve doit avoir eu lieu** : un journal où aucune action n'est
+déclarée plus bas que son type rend `SKIP`, jamais `PASS` ; un `refus` sur une telle déclaration est la réponse saine.
+
+**Règle pour les producteurs.** Le harnais d'un PEP rejoue, avant le Gate A du produit, des actions dont l'impact déclaré est
+inférieur à celui de leur type (et une dont il est supérieur), journalise chaque décision, puis joue cet oracle. Le PEP
+retient le plus élevé des deux niveaux, ne délivre un ticket au-dessus du seuil qu'avec un approbateur, et refuse un type
+inconnu.
+
+```
+node oracles/oracle-pep-impact.mjs <journal.jsonl> --catalogue <catalogue.json> [--json-only]
+```
+
+**Ce qui n'est pas jugé :** le chemin du PEP (l'oracle juge le résultat journalisé, pas le code : un PEP qui retient
+toujours le niveau le plus haut passerait) ; la justesse du catalogue et du seuil ; la complétude du journal ; l'injection
+des déclarations ; l'identité et l'habilitation de l'approbateur ; le ticket lui-même, le garde du démon et le proxy de sortie.
+
 ### Contrat de sortie (les oracles)
 
 ```json
@@ -275,6 +309,7 @@ autorisation délivrée après l'arrêt sans démarrage ; les effets que le harn
 `source` par constat et un tableau `sources` (page, date de lecture). `oracle-scan-mcp-supabase.mjs` fait de
 même (`securite-agentique/serveur-mcp-supabase`).
 `oracle-arret-en-course.mjs` ajoute `domaine` (`securite-agentique/arret-d-urgence-en-course`) ; la découverte (`decouvrir-oracles.mjs`) le liste sans autre inscription.
+`oracle-pep-impact.mjs` ajoute `domaine` (`securite-agentique/niveau-de-risque-du-pep`) ; même découverte.
 
 Exit `0` = PASS, `1` = FAIL, `2` = SKIP / `donnees_insuffisantes`.
 
@@ -284,7 +319,7 @@ Exit `0` = PASS, `1` = FAIL, `2` = SKIP / `donnees_insuffisantes`.
 node oracles/self-test.mjs
 ```
 
-Sortie attendue : `158 PASS, 0 FAIL` (mesuré le 14/11/2026). À rejouer après toute modification d'une règle, d'une
+Sortie attendue : `183 PASS, 0 FAIL` (mesuré le 14/11/2026). À rejouer après toute modification d'une règle, d'une
 fixture ou du corpus — un `✓` sans self-test rejoué n'est pas un `✓`.
 
 ## Limites explicites (ce que la v0 n'est pas)
@@ -338,6 +373,7 @@ oracles/
   oracle-scan-workflow-agent.mjs  agent lancé par un workflow GitHub Actions (TF-2002)
   oracle-scan-mcp-supabase.mjs serveur MCP de Supabase donné à un agent (TF-2009)
   oracle-arret-en-course.mjs   arrêt d'urgence d'une mission rejoué en course, journal du cycle de vie des jobs (TF-2217)
+  oracle-pep-impact.mjs        niveau de risque d'une action rejoué contre le catalogue, journal des décisions d'un PEP (TF-2422)
   lib-yaml.mjs                 lecteur YAML natif, copie de celui de forge-websec (pas un oracle)
   self-test.mjs                rejeu intégral à double sens
   data/referentiel-outils.json catalogue fermé des outils reconnus
@@ -352,6 +388,7 @@ fixtures/
   workflow-agent/              11 workflows (3 verts, 8 rouges) pour oracle-scan-workflow-agent
   mcp-supabase/                10 configurations MCP (4 vertes, 6 rouges) pour oracle-scan-mcp-supabase
   arret-en-course/             4 journaux de cycle de vie (1 vert, 3 rouges) pour oracle-arret-en-course
+  pep-impact/                  5 journaux de décisions de PEP (1 vert, 4 rouges) et un catalogue pour oracle-pep-impact
 references/
   FORMAT-JOURNAL.md            schéma documenté du journal JSONL (champ `output` inclus)
   mapping-owasp-llm.md         règles CAP/TC/INJ → OWASP LLM Top 10 + trous déclarés

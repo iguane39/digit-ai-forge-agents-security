@@ -1,0 +1,6 @@
+{"ts":"2026-11-10T09:00:00.000Z","action":"a-1","type":"consulter-etat","impact_declare":"faible","impact_retenu":"faible","decision":"ticket"}
+{"ts":"2026-11-10T09:00:01.000Z","action":"a-2","type":"tester-formulaire","impact_declare":"faible","impact_retenu":"moyen","decision":"attente_approbation"}
+{"ts":"2026-11-10T09:00:02.000Z","action":"a-3","type":"tester-formulaire","impact_declare":"faible","impact_retenu":"moyen","decision":"ticket","approbateur":"approbateur-1"}
+{"ts":"2026-11-10T09:00:03.000Z","action":"a-4","type":"consulter-etat","impact_declare":"eleve","impact_retenu":"eleve","decision":"ticket","approbateur":"approbateur-1"}
+{"ts":"2026-11-10T09:00:04.000Z","action":"a-5","type":"modifier-configuration","impact_declare":"faible","decision":"refus"}
+{"ts":"2026-11-10T09:00:05.000Z","action":"a-6","type":"type-fantome","impact_declare":"faible","decision":"refus"}

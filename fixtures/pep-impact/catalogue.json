@@ -1,0 +1,9 @@
+{
+  "niveaux": ["faible", "moyen", "eleve", "critique"],
+  "seuil_approbation": "moyen",
+  "types": {
+    "consulter-etat": "faible",
+    "tester-formulaire": "moyen",
+    "modifier-configuration": "eleve"
+  }
+}

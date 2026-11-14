@@ -66,6 +66,10 @@ confonde la règle avec la catégorie entière.
 | `AU-1` | `oracle-arret-en-course` | job démarré après l'arrêt d'urgence de sa mission, autorisé avant ou non | **LLM06** | — |
 | `AU-2` | `oracle-arret-en-course` | effet d'un job produit après l'arrêt d'urgence de sa mission | **LLM06** | — |
 | `AU-3` | `oracle-arret-en-course` | job en cours à l'arrêt jamais clos alors que le journal de la mission continue | **LLM06** | — |
+| `PI-1` | `oracle-pep-impact` | impact retenu par un PEP inférieur à celui du catalogue : la déclaration de l'agent est crue | **LLM06** | LLM01 |
+| `PI-2` | `oracle-pep-impact` | ticket émis sans approbateur alors que le niveau attendu atteint le seuil d'approbation | **LLM06** | — |
+| `PI-3` | `oracle-pep-impact` | impact retenu inférieur à l'impact déclaré au-dessus du catalogue : la relève de l'agent est ignorée | **LLM06** | — |
+| `PI-4` | `oracle-pep-impact` | ticket émis pour un type d'action absent du catalogue (défaut ouvert) | **LLM06** | — |
 
 ### Lecture inverse — catégorie → règles
 
@@ -76,7 +80,7 @@ confonde la règle avec la catégorie entière.
 | **LLM03** Supply Chain | CAP-2 | **marginale** — référentiel d'outils fermé uniquement ; ni provenance de modèle, ni intégrité de dépendance, ni signature de plugin/MCP |
 | **LLM04** Data and Model Poisoning | TC-5 (effleuré), INJ-1 (effleuré) | **NON COUVERTE** — voir §2 |
 | **LLM05** Improper Output Handling | TC-1 (pipe vers interpréteur), INJ-2 | **marginale** — un seul puits aval couvert (le shell) ; aucun contrôle d'assainissement vers HTML, SQL, rendu markdown, navigateur |
-| **LLM06** Excessive Agency | CAP-1, CAP-2, CAP-3, TC-2, TC-5, INJ-2, TC-6/TC-8 (effleuré), WA-1, WA-5, WA-7, SB-1, SB-2, SB-3, SB-5, AU-1, AU-2, AU-3 | **la mieux couverte** — surface déclarée (statique) + périmètre observé (dynamique) + agent de workflow (qui le déclenche, quels outils) + portée d'un serveur MCP de base de données (projet, lecture seule, production, groupes d'outils) + arrêt d'urgence d'une mission rejoué en course (un job ne démarre pas et n'agit plus après l'arrêt) ; reste hors champ : les actions à effet externe non journalisées |
+| **LLM06** Excessive Agency | CAP-1, CAP-2, CAP-3, TC-2, TC-5, INJ-2, TC-6/TC-8 (effleuré), WA-1, WA-5, WA-7, SB-1, SB-2, SB-3, SB-5, AU-1, AU-2, AU-3, PI-1, PI-2, PI-3, PI-4 | **la mieux couverte** — surface déclarée (statique) + périmètre observé (dynamique) + agent de workflow (qui le déclenche, quels outils) + portée d'un serveur MCP de base de données (projet, lecture seule, production, groupes d'outils) + arrêt d'urgence d'une mission rejoué en course (un job ne démarre pas et n'agit plus après l'arrêt) + niveau de risque d'une action rejoué contre le catalogue (le PEP ne croit pas la déclaration de l'agent) ; reste hors champ : les actions à effet externe non journalisées |
 | **LLM07** System Prompt Leakage | TC-3 (effleuré), charges INJ-D-03/D-04 (tentatives) | **NON COUVERTE** — voir §2 |
 | **LLM08** Vector and Embedding Weaknesses | charge INJ-I-12 (tentative) | **NON COUVERTE** — voir §2 |
 | **LLM09** Misinformation | charges INJ-I-06/I-12/I-17 (tentatives) | **NON COUVERTE** — voir §2 |

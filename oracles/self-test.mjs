@@ -661,5 +661,85 @@ console.log("\nSELF-TEST forge-agents-security — oracle-arret-en-course (arrê
   ok(runJson(ORACLE_AU, [FXA("n-existe-pas.jsonl")]).verdict === "SKIP", "journal introuvable → SKIP, jamais PASS");
 }
 
+console.log("\nSELF-TEST forge-agents-security — oracle-pep-impact (le niveau de risque se tire du catalogue, TF-2422)\n");
+
+// Le fait : le PEP d'un produit lisait l'impact dans la demande de l'agent ; une action déclarée « faible » sur un type
+// « moyen » du catalogue recevait un ticket sans approbateur. L'oracle juge le journal d'une épreuve où des déclarations
+// inférieures au catalogue ont été rejouées, contre le catalogue FOURNI (aucune échelle ni seuil devinés).
+{
+  const ORACLE_PI = path.join(HERE, "oracle-pep-impact.mjs");
+  const FXP = (f) => FX("pep-impact", f);
+  const CATALOGUE = FXP("catalogue.json");
+  const durs = (r) => (r.findings || []).filter((f) => f.sev === "bloquant" || f.sev === "majeur");
+  const regles = (r) => [...new Set(durs(r).map((f) => f.regle))].sort().join(",");
+  {
+    const r = runJson(ORACLE_PI, [FXP("vert-impact-tire-du-catalogue.jsonl"), "--catalogue", CATALOGUE]);
+    ok(r.verdict === "PASS" && durs(r).length === 0,
+      `vert-impact-tire-du-catalogue.jsonl (3 déclarations trop basses : retenu au catalogue puis attente, ticket approuvé, refus ; relève honorée ; type inconnu refusé) → PASS (obtenu ${r.verdict})`);
+  }
+  for (const [f, attendu, quoi] of [
+    ["rouge-declaration-crue.jsonl", "PI-1,PI-2", "« faible » déclaré sur un type « moyen », retenu « faible », ticket sans approbateur : le fait du produit"],
+    ["rouge-approbateur-oublie.jsonl", "PI-2", "niveau retenu au catalogue mais ticket émis sans approbateur"],
+    ["rouge-releve-ignoree.jsonl", "PI-3", "« eleve » déclaré sur un type « faible », retenu « faible » : la relève est ignorée"],
+    ["rouge-type-inconnu.jsonl", "PI-4", "ticket émis pour un type absent du catalogue"],
+  ]) {
+    const r = runJson(ORACLE_PI, [FXP(f), "--catalogue", CATALOGUE]);
+    ok(r.verdict === "FAIL" && regles(r) === attendu, `${f} (${quoi}) → FAIL sur ${attendu} seul (obtenu ${r.verdict}, ${regles(r) || "aucun"})`);
+  }
+  const tmpP = fs.mkdtempSync(path.join(os.tmpdir(), "forge-agents-security-tf2422-"));
+  try {
+    const lire = (f) => fs.readFileSync(FXP(f), "utf8").split(/\r?\n/).filter(Boolean);
+    const poser = (nom, lignes) => { const p = path.join(tmpP, nom); fs.writeFileSync(p, lignes.join("\n") + "\n", "utf8"); return p; };
+    const jouer = (nom, lignes, cat = CATALOGUE) => runJson(ORACLE_PI, [poser(nom, lignes), "--catalogue", cat]);
+    const modifier = (l, delta) => JSON.stringify({ ...JSON.parse(l), ...delta });
+    const crue = lire("rouge-declaration-crue.jsonl");
+    const oublie = lire("rouge-approbateur-oublie.jsonl");
+    const releve = lire("rouge-releve-ignoree.jsonl");
+    const inconnu = lire("rouge-type-inconnu.jsonl");
+    const vert = lire("vert-impact-tire-du-catalogue.jsonl");
+
+    // TF-1013 : chaque remède que nomme un constat, joué, rend PASS.
+    ok(regles(jouer("remede-pi1.jsonl", [crue[0], modifier(crue[1], { impact_retenu: "moyen" })])) === "PI-2",
+      "remède PI-1 joué seul : retenir le plus élevé (« moyen ») laisse PI-2 — le ticket sans approbateur est jugé pour lui-même");
+    ok(jouer("remede-pi1-pi2.jsonl", [crue[0], modifier(crue[1], { impact_retenu: "moyen", decision: "attente_approbation" })]).verdict === "PASS",
+      "remèdes PI-1 et PI-2 joués : niveau retenu au catalogue, ticket seulement après approbation (attente d'abord) → PASS (TF-1013)");
+    ok(jouer("remede-pi2.jsonl", [oublie[0], modifier(oublie[1], { approbateur: "approbateur-1" })]).verdict === "PASS",
+      "remède PI-2 joué : l'approbateur est journalisé sur le ticket → PASS (TF-1013)");
+    ok(jouer("remede-pi3.jsonl", [releve[0], modifier(releve[1], { impact_retenu: "eleve" })]).verdict === "PASS",
+      "remède PI-3 joué : le plus élevé des deux (« eleve ») est retenu → PASS (TF-1013)");
+    ok(jouer("remede-pi4.jsonl", [inconnu[0], modifier(inconnu[1], { decision: "refus" })]).verdict === "PASS",
+      "remède PI-4 joué : le type inconnu est refusé → PASS (TF-1013)");
+
+    // Le seuil et l'échelle sont ceux du catalogue fourni, pas ceux de la forge.
+    const catHaut = path.join(tmpP, "catalogue-seuil-eleve.json");
+    fs.writeFileSync(catHaut, JSON.stringify({ ...JSON.parse(fs.readFileSync(CATALOGUE, "utf8")), seuil_approbation: "eleve" }), "utf8");
+    ok(regles(jouer("seuil-eleve.jsonl", [oublie[0], oublie[1]], catHaut)) === "", "le même ticket sans approbateur, sous un seuil d'approbation à « eleve » → plus de PI-2 : le seuil est celui du catalogue fourni");
+    ok(jouer("seuil-eleve-vert.jsonl", [oublie[0], oublie[1]], catHaut).verdict === "PASS", "… et PASS, la déclaration trop basse ayant été rejouée");
+
+    // Le type « constructor » n'est pas un type du catalogue (héritage d'objet JS), et un ticket pour lui est un PI-4.
+    ok(regles(jouer("type-prototype.jsonl", [inconnu[0], modifier(inconnu[1], { type: "constructor" })])) === "PI-4", "type « constructor » (propriété héritée, pas un type du catalogue) → PI-4 : la recherche du type ne lit que les types déclarés");
+
+    // Fail-closed : l'épreuve doit avoir eu lieu, et le catalogue comme l'échelle sont fournis.
+    ok(jouer("sans-declaration-basse.jsonl", [vert[0], vert[3]]).verdict === "SKIP", "journal sans aucune déclaration inférieure au catalogue → SKIP : la faille n'a pas été rejouée, jamais PASS par défaut");
+    ok(jouer("refus-seul.jsonl", [vert[4]]).verdict === "PASS", "un refus sur une déclaration trop basse est l'épreuve jouée, et la réponse saine → PASS");
+    ok(runJson(ORACLE_PI, [FXP("rouge-declaration-crue.jsonl")]).verdict === "donnees_insuffisantes", "sans --catalogue → donnees_insuffisantes : ni échelle, ni seuil, ni niveau de type ne se devinent");
+    ok(runJson(ORACLE_PI, [FXP("rouge-declaration-crue.jsonl"), "--catalogue", path.join(tmpP, "absent.json")]).verdict === "donnees_insuffisantes", "catalogue introuvable → donnees_insuffisantes");
+    const catSeuilFou = path.join(tmpP, "catalogue-seuil-fou.json");
+    fs.writeFileSync(catSeuilFou, JSON.stringify({ ...JSON.parse(fs.readFileSync(CATALOGUE, "utf8")), seuil_approbation: "tres-eleve" }), "utf8");
+    ok(jouer("seuil-hors-echelle.jsonl", crue, catSeuilFou).verdict === "donnees_insuffisantes", "seuil d'approbation hors de l'échelle du catalogue → donnees_insuffisantes");
+    ok(jouer("niveau-inconnu.jsonl", [crue[0], modifier(crue[1], { impact_declare: "trivial" })]).verdict === "donnees_insuffisantes", "impact déclaré hors de l'échelle du produit → donnees_insuffisantes, jamais ignoré en silence");
+    ok(jouer("retenu-absent.jsonl", [crue[0], modifier(crue[1], { impact_retenu: undefined })]).verdict === "donnees_insuffisantes", "ticket sans impact_retenu → donnees_insuffisantes : un niveau retenu ne se devine pas");
+    ok(jouer("decision-inconnue.jsonl", [crue[0], modifier(crue[1], { decision: "autorise" })]).verdict === "donnees_insuffisantes", "decision inconnue (autre mot que ticket, attente_approbation, refus) → donnees_insuffisantes");
+    ok(jouer("json-casse.jsonl", [...crue, "{ pas du json"]).verdict === "FAIL", "ligne illisible → FAIL dit, jamais un PASS silencieux");
+    ok(jouer("vide.jsonl", []).verdict === "FAIL", "journal vide → FAIL dit");
+    const a = JSON.stringify(runJson(ORACLE_PI, [FXP("rouge-declaration-crue.jsonl"), "--catalogue", CATALOGUE]));
+    const b = JSON.stringify(runJson(ORACLE_PI, [FXP("rouge-declaration-crue.jsonl"), "--catalogue", CATALOGUE]));
+    ok(a === b, "deux rejeux du rouge donnent un résultat identique octet pour octet : jugement déterministe");
+  } finally {
+    fs.rmSync(tmpP, { recursive: true, force: true });
+  }
+  ok(runJson(ORACLE_PI, [FXP("n-existe-pas.jsonl"), "--catalogue", CATALOGUE]).verdict === "SKIP", "journal introuvable → SKIP, jamais PASS");
+}
+
 console.log(`\nSelf-test forge-agents-security : ${pass} PASS, ${echec} FAIL`);
 process.exit(echec ? 1 : 0);
